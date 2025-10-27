@@ -1,14 +1,14 @@
 
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, Lightbulb, Search, Briefcase, User, Save, FileText, CheckCircle, XCircle, Circle, ArrowRight } from 'lucide-react';
+import { Loader2, Sparkles, Lightbulb, Search, Briefcase, User, Save, FileText, CheckCircle, XCircle, Circle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -410,26 +410,21 @@ const demoJobs = [
 ];
 
 
-function JobSearch() {
+function JobSearch({ onApply }: { onApply: (job: typeof demoJobs[0]) => void }) {
   const [queryText, setQueryText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<(typeof demoJobs) | null>(null);
-  const { toast } = useToast();
 
   const handleSearch = () => {
     setIsLoading(true);
-    // Simulate a network request
     setTimeout(() => {
       setResults(demoJobs);
       setIsLoading(false);
     }, 1000);
   };
   
-  const handleApply = (jobId: string) => {
-    toast({
-      title: "Application Sent (Demo)",
-      description: "In a real app, this would submit your resume to the employer.",
-    });
+  const handleApply = (job: typeof demoJobs[0]) => {
+    onApply(job);
   }
 
   return (
@@ -466,7 +461,7 @@ function JobSearch() {
                     <p className="text-sm text-muted-foreground mt-1">{job.timestamp}</p>
                     <p className="text-sm mt-2 line-clamp-2">{job.jobPostingText}</p>
                   </div>
-                  <Button onClick={() => handleApply(job.id)}>Apply</Button>
+                  <Button onClick={() => handleApply(job)}>Apply</Button>
                 </Card>
               ))
             )}
@@ -487,18 +482,19 @@ const applicationStatuses = [
 
 type ApplicationStatus = (typeof applicationStatuses)[number] | 'Rejected' | 'Internship';
 
-const demoApplications: {
+type Application = {
   id: string;
   jobTitle: string;
   companyName: string;
   status: ApplicationStatus;
   statusText: string;
-}[] = [
+};
+
+const initialApplications: Application[] = [
   { id: 'app1', jobTitle: 'Frontend Developer', companyName: 'Vercel', status: 'Interview', statusText: 'Scheduled for next week' },
   { id: 'app2', jobTitle: 'UX Designer', companyName: 'Figma', status: 'Accepted', statusText: 'Offer accepted! Start date confirmed.' },
   { id: 'app3', jobTitle: 'Backend Engineer', companyName: 'Supabase', status: 'Rejected', statusText: 'Rejected after initial screening.' },
   { id: 'app4', jobTitle: 'Data Analyst Intern', companyName: 'Notion', status: 'Internship', statusText: 'Internship in progress.' },
-  { id: 'app5', jobTitle: 'Product Manager', companyName: 'Linear', status: 'Submitted', statusText: 'Application sent yesterday.' },
 ];
 
 function ApplicationProgressBar({ status }: { status: ApplicationStatus }) {
@@ -566,7 +562,7 @@ function ApplicationProgressBar({ status }: { status: ApplicationStatus }) {
 }
 
 
-function ApplicationTracker() {
+function ApplicationTracker({ applications }: { applications: Application[] }) {
   return (
     <Card className="max-w-4xl mx-auto">
       <CardHeader>
@@ -574,8 +570,8 @@ function ApplicationTracker() {
         <CardDescription>Keep track of all your job applications and their current status.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {demoApplications.length > 0 ? (
-          demoApplications.map((app) => (
+        {applications.length > 0 ? (
+          applications.map((app) => (
             <Card key={app.id} className="p-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex-1">
@@ -605,9 +601,41 @@ function ApplicationTracker() {
 
 
 export default function JobSeekerPage() {
+  const [applications, setApplications] = useState<Application[]>(initialApplications);
+  const [activeTab, setActiveTab] = useState("builder");
+  const { toast } = useToast();
+
+  const handleApply = useCallback((job: typeof demoJobs[0]) => {
+    // Check if an application for this job already exists
+    if (applications.some(app => app.id === `app-${job.id}`)) {
+      toast({
+        variant: "default",
+        title: "Already Applied",
+        description: `You have already applied for the ${job.jobTitle} position.`,
+      });
+      return;
+    }
+
+    const newApplication: Application = {
+      id: `app-${job.id}`,
+      jobTitle: job.jobTitle,
+      companyName: job.companyName,
+      status: 'Submitted',
+      statusText: 'Application sent today.',
+    };
+
+    setApplications(prev => [newApplication, ...prev]);
+    toast({
+      title: "Application Sent!",
+      description: `Your application for ${job.jobTitle} has been submitted.`,
+    });
+    setActiveTab("tracker");
+  }, [applications, toast]);
+
+
   return (
     <div className="container mx-auto max-w-7xl py-8 px-4">
-      <Tabs defaultValue="builder" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
           <TabsTrigger value="builder">Resume Builder</TabsTrigger>
           <TabsTrigger value="insights">AI Resume Insights</TabsTrigger>
@@ -625,10 +653,10 @@ export default function JobSeekerPage() {
           <JobSuggestions />
         </TabsContent>
         <TabsContent value="search" className="mt-4">
-          <JobSearch />
+          <JobSearch onApply={handleApply} />
         </TabsContent>
         <TabsContent value="tracker" className="mt-4">
-          <ApplicationTracker />
+          <ApplicationTracker applications={applications} />
         </TabsContent>
       </Tabs>
     </div>
