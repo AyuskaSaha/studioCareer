@@ -5,7 +5,7 @@
  *
  * - analyzeResumeShortcomings - A function that analyzes a resume and provides insights on potential shortcomings.
  * - AnalyzeResumeShortcomingsInput - The input type for the analyzeResumeShortcomings function.
- * - AnalyzeResumeShortcomingsOutput - The return type for the analyzeResumeShortcomings function.
+ * - AnalyzeResumeShortcomingsOutput - The return type for the analyzeResumeShortcomingsOutput function.
  */
 
 import {ai} from '@/ai/genkit';
@@ -57,10 +57,8 @@ Ensure the output is structured according to the AnalyzeResumeShortcomingsOutput
 
 Avoid generic or obvious recommendations. Focus on providing insightful and practical advice tailored to the specific job description and candidate profile.
 
-Output format:
-```json
-{{$json(output)}}
-````,
+Return the response as a JSON object that adheres to the output schema.
+`,
 });
 
 const analyzeResumeShortcomingsFlow = ai.defineFlow(
