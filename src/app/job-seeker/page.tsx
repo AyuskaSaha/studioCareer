@@ -20,6 +20,8 @@ import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { doc, setDoc, collection, query, where, addDoc } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useJobs, type AppJobPosting } from '@/app/job-context';
+import { formatDistanceToNow } from 'date-fns';
 
 type ResumeData = {
   personalInfo: {
@@ -382,48 +384,28 @@ function JobSuggestions() {
   )
 }
 
-const demoJobs = [
-  {
-    id: '1',
-    jobTitle: 'Senior Frontend Developer',
-    companyName: 'Stripe',
-    location: 'Remote',
-    jobPostingText: 'As a Senior Frontend Developer at Stripe, you will build beautiful and functional user interfaces that are used by millions of businesses worldwide. You will work with a modern tech stack, including React, TypeScript, and Next.js.',
-    timestamp: 'Posted 2 days ago'
-  },
-  {
-    id: '2',
-    jobTitle: 'Product Manager, AI',
-    companyName: 'Google',
-    location: 'Mountain View, CA',
-    jobPostingText: 'We are looking for an experienced Product Manager to lead our AI initiatives. You will define the product strategy, work with engineering to build innovative features, and launch them to a global audience.',
-    timestamp: 'Posted 5 days ago'
-  },
-  {
-    id: '3',
-    jobTitle: 'Data Scientist',
-    companyName: 'Netflix',
-    location: 'Los Gatos, CA',
-    jobPostingText: 'Join the Netflix content analytics team to help decide which shows and movies get made. You will use statistical analysis and machine learning to model viewer preferences and predict content success.',
-    timestamp: 'Posted 1 week ago'
-  },
-];
-
-
-function JobSearch({ onApply }: { onApply: (job: typeof demoJobs[0]) => void }) {
+function JobSearch({ onApply }: { onApply: (job: AppJobPosting) => void }) {
   const [queryText, setQueryText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [results, setResults] = useState<(typeof demoJobs) | null>(null);
+  const [results, setResults] = useState<AppJobPosting[] | null>(null);
+  const { jobs } = useJobs();
 
   const handleSearch = () => {
     setIsLoading(true);
+    // In a real app, this might be an API call. Here we filter the shared jobs list.
     setTimeout(() => {
-      setResults(demoJobs);
+      const lowercasedQuery = queryText.toLowerCase();
+      const filteredJobs = jobs.filter(job => 
+        job.jobTitle.toLowerCase().includes(lowercasedQuery) ||
+        job.companyName.toLowerCase().includes(lowercasedQuery) ||
+        job.jobPostingText.toLowerCase().includes(lowercasedQuery)
+      );
+      setResults(filteredJobs);
       setIsLoading(false);
-    }, 1000);
+    }, 500);
   };
   
-  const handleApply = (job: typeof demoJobs[0]) => {
+  const handleApply = (job: AppJobPosting) => {
     onApply(job);
   }
 
@@ -458,7 +440,7 @@ function JobSearch({ onApply }: { onApply: (job: typeof demoJobs[0]) => void }) 
                   <div className="flex-1">
                     <h4 className="font-semibold">{job.jobTitle}</h4>
                     <p className="text-sm text-muted-foreground">{job.companyName} - {job.location}</p>
-                    <p className="text-sm text-muted-foreground mt-1">{job.timestamp}</p>
+                    <p className="text-sm text-muted-foreground mt-1">Posted {formatDistanceToNow(new Date(job.createdAt))} ago</p>
                     <p className="text-sm mt-2 line-clamp-2">{job.jobPostingText}</p>
                   </div>
                   <Button onClick={() => handleApply(job)}>Apply</Button>
@@ -605,7 +587,7 @@ export default function JobSeekerPage() {
   const [activeTab, setActiveTab] = useState("builder");
   const { toast } = useToast();
 
-  const handleApply = useCallback((job: typeof demoJobs[0]) => {
+  const handleApply = useCallback((job: AppJobPosting) => {
     // Check if an application for this job already exists
     if (applications.some(app => app.id === `app-${job.id}`)) {
       toast({
@@ -621,7 +603,7 @@ export default function JobSeekerPage() {
       jobTitle: job.jobTitle,
       companyName: job.companyName,
       status: 'Submitted',
-      statusText: 'Application sent today.',
+      statusText: `Application sent ${formatDistanceToNow(new Date())} ago.`,
     };
 
     setApplications(prev => [newApplication, ...prev]);
@@ -662,5 +644,3 @@ export default function JobSeekerPage() {
     </div>
   );
 }
-
-    

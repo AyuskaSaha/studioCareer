@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Toaster } from "@/components/ui/toaster";
 import './globals.css';
 import { FirebaseClientProvider } from '@/firebase';
+import { JobProvider } from '@/app/job-context';
 
 export const metadata: Metadata = {
   title: 'CareerAI',
@@ -22,7 +23,9 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased">
         <FirebaseClientProvider>
-          {children}
+          <JobProvider>
+            {children}
+          </JobProvider>
         </FirebaseClientProvider>
         <Toaster />
       </body>
