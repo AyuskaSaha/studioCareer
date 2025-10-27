@@ -450,4 +450,21 @@ export default function JobSeekerPage() {
           <TabsTrigger value="builder">Resume Builder</TabsTrigger>
           <TabsTrigger value="insights">AI Resume Insights</TabsTrigger>
           <TabsTrigger value="suggestions">AI Job Suggestions</TabsTrigger>
-          <TabsTrigger value="search">Job Search</T
+          <TabsTrigger value="search">Job Search</TabsTrigger>
+        </TabsList>
+        <TabsContent value="builder" className="mt-4">
+          <ResumeBuilder />
+        </TabsContent>
+        <TabsContent value="insights" className="mt-4">
+          <ResumeInsights />
+        </TabsContent>
+        <TabsContent value="suggestions" className="mt-4">
+          <JobSuggestions />
+        </TabsContent>
+        <TabsContent value="search" className="mt-4">
+          <JobSearch />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
