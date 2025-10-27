@@ -439,7 +439,7 @@ function PreviousPostings() {
     return <Card><CardHeader><CardTitle className="font-headline">Previous Job Postings</CardTitle><CardDescription>View and manage your previously generated job postings.</CardDescription></CardHeader><CardContent><Loader2 className="animate-spin" /></CardContent></Card>;
   }
 
-  const allPostings = [...demoPostings, ...(jobPostings || [])];
+  const allPostings = [...(jobPostings || []), ...demoPostings];
 
   return (
     <Card>
