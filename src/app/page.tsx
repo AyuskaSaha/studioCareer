@@ -5,11 +5,10 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, User, Briefcase } from 'lucide-react';
+import { ArrowRight, User, Briefcase, Loader2 } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 
 export default function Home() {
   const seekerImage = PlaceHolderImages.find(img => img.id === 'job-seeker-card');
