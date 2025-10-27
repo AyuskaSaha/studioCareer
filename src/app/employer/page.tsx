@@ -633,8 +633,8 @@ export default function EmployerPage() {
     setActiveTab('ranker');
 
     if (!firestore) {
-      setJobPostings(prev => [newPosting, ...prev]);
-      toast({ title: "Demo Mode", description: "Job posting saved in session. It won't persist."});
+      setJobPostings(prev => [newPosting, ...prev].sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis()));
+      toast({ title: "Demo Mode", description: "Job posting saved in session. It won't persist without a database connection."});
       return;
     }
     

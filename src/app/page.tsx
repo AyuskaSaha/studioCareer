@@ -10,13 +10,19 @@ import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { useEffect, useState } from 'react';
 
 export default function Home() {
+  const [isClient, setIsClient] = useState(false);
   const seekerImage = PlaceHolderImages.find(img => img.id === 'job-seeker-card');
   const employerImage = PlaceHolderImages.find(img => img.id === 'employer-card');
   const [year, setYear] = useState(new Date().getFullYear());
 
   useEffect(() => {
+    setIsClient(true);
     setYear(new Date().getFullYear());
   }, []);
+
+  if (!isClient) {
+    return null;
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
