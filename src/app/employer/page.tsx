@@ -506,6 +506,8 @@ function PostingTimeDetails({ posting }: { posting: AppJobPosting }) {
         }
         if(posting.expiresAt) {
             setExpiresAt(` \u2022 Expires ${formatDistanceToNow(posting.expiresAt, { addSuffix: true })}`)
+        } else {
+            setExpiresAt('');
         }
     }, [posting.createdAt, posting.expiresAt]);
     
@@ -564,11 +566,12 @@ function PreviousPostings({ jobPostings, isLoading, onUpdate, onDelete }: { jobP
 
 export default function EmployerPage() {
   const [activeTab, setActiveTab] = useState("ranker");
-  const { firestore, user } = useFirebase();
-  
-  // For the demo, we will use a hardcoded user ID for the query.
-  // In a real app, this would be the logged-in user's ID.
+  const { firestore } = useFirebase();
   const demoUserId = 'anonymous-user';
+  const { toast } = useToast();
+
+  const [jobPostings, setJobPostings] = useState<AppJobPosting[]>([]);
+  const [isClient, setIsClient] = useState(false);
 
   const jobPostingsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -580,13 +583,12 @@ export default function EmployerPage() {
   }, [firestore]);
 
   const { data: firestorePostings, isLoading: isLoadingFirestore } = useCollection<FirestoreJobPosting>(jobPostingsQuery);
-  const { toast } = useToast();
-
-  const [jobPostings, setJobPostings] = useState<AppJobPosting[]>([]);
-  const [isClient, setIsClient] = useState(false);
-
+  
   useEffect(() => {
     setIsClient(true);
+  }, []);
+
+  useEffect(() => {
     if (firestorePostings) {
       const appPostings = firestorePostings.map(p => ({
         id: p.id,
@@ -628,11 +630,10 @@ export default function EmployerPage() {
 
 
   const handleJobSaved = async (newPosting: AppJobPosting) => {
-    // Optimistically update the UI
-    setJobPostings(prev => [newPosting, ...prev]);
     setActiveTab('ranker');
 
     if (!firestore) {
+      setJobPostings(prev => [newPosting, ...prev]);
       toast({ title: "Demo Mode", description: "Job posting saved in session. It won't persist."});
       return;
     }
@@ -649,19 +650,15 @@ export default function EmployerPage() {
     } catch (error) {
       console.error("Error saving job to Firestore:", error);
       toast({ variant: 'destructive', title: "Save Failed", description: "Could not save the job posting." });
-      setJobPostings(prev => prev.filter(p => p.id !== newPosting.id));
     }
   };
 
   const handleJobDelete = async (jobId: string) => {
-     if (!firestore || jobId.startsWith('new-')) {
+    if (!firestore || jobId.startsWith('new-')) {
       setJobPostings(prev => prev.filter(job => job.id !== jobId));
       toast({ title: "Job Removed", description: "The demo job posting has been removed from this session." });
       return;
     }
-
-    // Optimistically remove from UI
-    setJobPostings(prev => prev.filter(job => job.id !== jobId));
     
     try {
       const docRef = doc(firestore, "jobPostings", jobId);
@@ -670,7 +667,6 @@ export default function EmployerPage() {
     } catch (error) {
       console.error("Failed to delete from Firestore:", error);
       toast({ variant: 'destructive', title: "Delete Failed", description: "Could not delete the job from the database." });
-      // Re-add to UI if delete fails, though this requires fetching again or storing the deleted item.
     }
   };
   
@@ -681,9 +677,6 @@ export default function EmployerPage() {
       return;
     }
     
-    // Optimistically update UI
-    setJobPostings(prev => prev.map(job => job.id === jobId ? {...job, ...updates} : job));
-
      try {
         const docRef = doc(firestore, 'jobPostings', jobId);
         const firestoreUpdates: any = { ...updates };
@@ -695,16 +688,11 @@ export default function EmployerPage() {
       } catch (error) {
           console.error("Failed to update Firestore:", error);
           toast({ variant: 'destructive', title: "Update Failed", description: "Could not update the job in the database." });
-          // Revert UI update on failure
       }
   };
 
   if (!isClient) {
-    return (
-        <div className="container mx-auto max-w-5xl py-8 px-4 flex justify-center items-center h-screen">
-            <Loader2 className="h-16 w-16 animate-spin" />
-        </div>
-    );
+    return null;
   }
   
   const isLoading = isLoadingFirestore;
