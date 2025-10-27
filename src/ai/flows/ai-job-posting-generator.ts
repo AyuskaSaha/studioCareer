@@ -9,9 +9,6 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
-import { addDocumentNonBlocking } from '@/firebase';
-import { collection, serverTimestamp } from 'firebase/firestore';
-import { initializeFirebase } from '@/firebase';
 
 const JobPostingInputSchema = z.object({
   jobTitle: z.string().describe('The title of the job.'),
@@ -24,26 +21,40 @@ const JobPostingInputSchema = z.object({
   mustHaveSkills: z.string().describe('A comma-separated list of essential skills.'),
   niceToHaveSkills: z.string().optional().describe('A comma-separated list of skills that are nice to have.'),
   userProfileId: z.string().describe('The ID of the user creating the job posting.'),
+  refinement: z.string().optional().describe('An optional instruction to refine the previously generated posting.'),
+  previousPosting: z.string().optional().describe('The previously generated job posting text to be refined.'),
 });
 
 export type JobPostingInput = z.infer<typeof JobPostingInputSchema>;
 
-const JobPostingOutputSchema = z.object({
-  jobPostingText: z.string().describe('The generated job posting text, formatted professionally with a timestamp.'),
-});
+const JobPostingOutputSchema = z.string().describe('The generated job posting text.');
 
 export type JobPostingOutput = z.infer<typeof JobPostingOutputSchema>;
 
-export async function generateJobPosting(input: JobPostingInput): Promise<JobPostingOutput> {
+export async function generateJobPosting(input: JobPostingInput) {
   return generateJobPostingFlow(input);
 }
 
 const prompt = ai.definePrompt({
   name: 'jobPostingPrompt',
   input: {schema: JobPostingInputSchema},
-  output: {schema: JobPostingOutputSchema},
-  prompt: `You are an expert job posting writer. Generate a compelling, professional, and well-structured job posting based on the following details. Include today's date at the top of the posting.
+  output: {format: 'text'},
+  prompt: `You are an expert job posting writer. Generate a compelling, professional, and well-structured job posting based on the following details. Include today's date at the top of the posting, formatted as "Posted on: [Month] [Day], [Year]".
 
+{{#if refinement}}
+You are refining a previous job posting. The user's instruction for refinement is: "{{refinement}}".
+
+The previous job posting was:
+---
+{{previousPosting}}
+---
+
+Regenerate the entire job posting based on the original details AND the refinement instruction.
+{{else}}
+Generate a new job posting.
+{{/if}}
+
+Original Details:
 Job Title: {{{jobTitle}}}
 Company Name: {{{companyName}}}
 Location: {{{location}}}
@@ -72,28 +83,17 @@ const generateJobPostingFlow = ai.defineFlow(
   {
     name: 'generateJobPostingFlow',
     inputSchema: JobPostingInputSchema,
-    outputSchema: JobPostingOutputSchema,
+    outputSchema: z.string(),
+    stream: true,
   },
-  async input => {
-    const {output} = await prompt(input);
+  async (input, streamingCallback) => {
+    const {stream} = await prompt(input, {streamingCallback});
 
-    const {firestore} = initializeFirebase();
-    const jobPostingsCol = collection(firestore, 'jobPostings');
-
-    const jobPostingData = {
-        userProfileId: input.userProfileId,
-        jobTitle: input.jobTitle,
-        companyName: input.companyName,
-        location: input.location,
-        salaryRange: input.salaryRange,
-        jobType: input.jobType,
-        jobPostingText: `Posted on: ${new Date().toLocaleDateString()}\n\n${output!.jobPostingText}`,
-        createdAt: serverTimestamp(),
-        status: 'active'
-    };
+    let finalResult = '';
+    for await (const chunk of stream) {
+      finalResult += chunk;
+    }
     
-    addDocumentNonBlocking(jobPostingsCol, jobPostingData);
-
-    return { jobPostingText: jobPostingData.jobPostingText };
+    return finalResult;
   }
 );

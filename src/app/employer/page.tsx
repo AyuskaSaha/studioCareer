@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, UserCheck, Search, FileText, Briefcase } from 'lucide-react';
+import { Loader2, Sparkles, UserCheck, Search, FileText, Briefcase, Wand2, Save } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { generateJobPosting, type JobPostingInput } from '@/ai/flows/ai-job-posting-generator';
@@ -18,10 +18,12 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Badge } from '@/components/ui/badge';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, orderBy, where, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, where, Timestamp, addDoc, serverTimestamp } from 'firebase/firestore';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
+import { addDocumentNonBlocking } from '@/firebase';
 
 type JobPosting = {
   id: string;
@@ -34,10 +36,12 @@ type JobPosting = {
 
 function JobPostingGenerator() {
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<Partial<Omit<JobPostingInput, 'userProfileId'>>>({ jobType: 'Full-time' });
-  const [generatedPosting, setGeneratedPosting] = useState<string | null>(null);
+  const [generatedPosting, setGeneratedPosting] = useState<string>('');
+  const [refinement, setRefinement] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const { user, auth } = useFirebase();
+  const { user, auth, firestore } = useFirebase();
   const { toast } = useToast();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -54,33 +58,72 @@ function JobPostingGenerator() {
     return jobTitle && companyName && location && description && responsibilities && mustHaveSkills && user;
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (isRefinement = false) => {
     if (!canGenerate()) {
       setError("Please fill out all required fields and ensure you are logged in.");
       return;
     }
     setLoading(true);
     setError(null);
-    setGeneratedPosting(null);
+    if (!isRefinement) {
+      setGeneratedPosting('');
+    }
+
     try {
-      const result = await generateJobPosting({ ...formData as Omit<JobPostingInput, 'userProfileId'>, userProfileId: user!.uid });
-      setGeneratedPosting(result.jobPostingText);
-      toast({
-        title: "Job Posting Generated!",
-        description: "Your new job posting has been created and saved.",
-      });
+      const input: JobPostingInput = {
+        ...formData as Omit<JobPostingInput, 'userProfileId' | 'refinement' | 'previousPosting'>,
+        userProfileId: user!.uid,
+        ...(isRefinement && { refinement, previousPosting: generatedPosting })
+      };
+      
+      const stream = await generateJobPosting(input);
+      for await (const chunk of stream) {
+        setGeneratedPosting(prev => prev + chunk);
+      }
     } catch (e) {
       console.error(e);
-      setError("Failed to generate job posting. Please try again.");
+      setError(`Failed to ${isRefinement ? 'refine' : 'generate'} job posting. Please try again.`);
     }
     setLoading(false);
   };
+
+  const handleSave = async () => {
+    if (!user || !firestore || !generatedPosting) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Cannot save posting. Make sure you are logged in and have generated a posting.'});
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const jobPostingsCol = collection(firestore, 'jobPostings');
+      await addDoc(jobPostingsCol, {
+        userProfileId: user.uid,
+        jobTitle: formData.jobTitle,
+        companyName: formData.companyName,
+        location: formData.location,
+        salaryRange: formData.salaryRange,
+        jobType: formData.jobType,
+        jobPostingText: generatedPosting,
+        createdAt: serverTimestamp(),
+        status: 'active'
+      });
+      toast({
+        title: "Job Posting Saved!",
+        description: "Your new job posting has been saved to your 'Previous Postings'.",
+      });
+    } catch (e) {
+      console.error(e);
+      setError("Failed to save job posting.");
+      toast({ variant: 'destructive', title: 'Save Failed', description: 'Could not save the job posting. Please try again.' });
+    }
+    setSaving(false);
+  }
   
   return (
     <Card>
       <CardHeader>
         <CardTitle className="font-headline">AI Job Posting Generator</CardTitle>
-        <CardDescription>Fill in the details below and let our AI craft the perfect job posting for you.</CardDescription>
+        <CardDescription>Fill in the details below, and let our AI craft the perfect job posting. You can then refine it with further instructions.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {!user && (
@@ -89,30 +132,32 @@ function JobPostingGenerator() {
             <AlertTitle>Please Log In</AlertTitle>
             <AlertDescription>
               You need to be logged in to generate and save job postings.
-              <Button variant="link" className="p-0 h-auto ml-1" onClick={() => auth && auth.signInAnonymously()}>Log in anonymously</Button>
+              <Button variant="link" className="p-0 h-auto ml-1" onClick={() => auth && initiateAnonymousSignIn(auth)}>Log in anonymously</Button>
             </AlertDescription>
           </Alert>
         )}
+
+        {/* Form Section */}
         <div className="grid md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="jobTitle">Job Title</Label>
-            <Input id="jobTitle" placeholder="e.g., Senior Frontend Developer" value={formData.jobTitle || ''} onChange={handleInputChange} disabled={!user}/>
+            <Input id="jobTitle" placeholder="e.g., Senior Frontend Developer" value={formData.jobTitle || ''} onChange={handleInputChange} disabled={!user || loading}/>
           </div>
           <div className="space-y-2">
             <Label htmlFor="companyName">Company Name</Label>
-            <Input id="companyName" placeholder="e.g., Acme Inc." value={formData.companyName || ''} onChange={handleInputChange} disabled={!user}/>
+            <Input id="companyName" placeholder="e.g., Acme Inc." value={formData.companyName || ''} onChange={handleInputChange} disabled={!user || loading}/>
           </div>
           <div className="space-y-2">
             <Label htmlFor="location">Location</Label>
-            <Input id="location" placeholder="e.g., San Francisco, CA or Remote" value={formData.location || ''} onChange={handleInputChange} disabled={!user}/>
+            <Input id="location" placeholder="e.g., San Francisco, CA or Remote" value={formData.location || ''} onChange={handleInputChange} disabled={!user || loading}/>
           </div>
           <div className="space-y-2">
             <Label htmlFor="salaryRange">Salary Range (Optional)</Label>
-            <Input id="salaryRange" placeholder="e.g., $120,000 - $150,000" value={formData.salaryRange || ''} onChange={handleInputChange} disabled={!user}/>
+            <Input id="salaryRange" placeholder="e.g., $120,000 - $150,000" value={formData.salaryRange || ''} onChange={handleInputChange} disabled={!user || loading}/>
           </div>
           <div className="space-y-2">
             <Label htmlFor="jobType">Job Type</Label>
-             <Select value={formData.jobType} onValueChange={handleSelectChange} disabled={!user}>
+             <Select value={formData.jobType} onValueChange={handleSelectChange} disabled={!user || loading}>
               <SelectTrigger id="jobType">
                 <SelectValue placeholder="Select job type" />
               </SelectTrigger>
@@ -127,34 +172,54 @@ function JobPostingGenerator() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="description">Company & Role Description</Label>
-          <Textarea id="description" placeholder="Describe your company's mission, culture, and the role's purpose." className="min-h-[100px]" value={formData.description || ''} onChange={handleInputChange} disabled={!user}/>
+          <Textarea id="description" placeholder="Describe your company's mission, culture, and the role's purpose." className="min-h-[100px]" value={formData.description || ''} onChange={handleInputChange} disabled={!user || loading}/>
         </div>
         <div className="space-y-2">
           <Label htmlFor="responsibilities">Responsibilities</Label>
-          <Textarea id="responsibilities" placeholder="List the key responsibilities, e.g., - Develop and maintain web applications..." className="min-h-[120px]" value={formData.responsibilities || ''} onChange={handleInputChange} disabled={!user}/>
+          <Textarea id="responsibilities" placeholder="List the key responsibilities, e.g., - Develop and maintain web applications..." className="min-h-[120px]" value={formData.responsibilities || ''} onChange={handleInputChange} disabled={!user || loading}/>
         </div>
         <div className="space-y-2">
           <Label htmlFor="mustHaveSkills">Must-Have Skills</Label>
-          <Input id="mustHaveSkills" placeholder="Comma-separated, e.g., React, TypeScript, CSS" value={formData.mustHaveSkills || ''} onChange={handleInputChange} disabled={!user}/>
+          <Input id="mustHaveSkills" placeholder="Comma-separated, e.g., React, TypeScript, CSS" value={formData.mustHaveSkills || ''} onChange={handleInputChange} disabled={!user || loading}/>
         </div>
         <div className="space-y-2">
           <Label htmlFor="niceToHaveSkills">Nice-to-Have Skills (Optional)</Label>
-          <Input id="niceToHaveSkills" placeholder="Comma-separated, e.g., GraphQL, Docker, AWS" value={formData.niceToHaveSkills || ''} onChange={handleInputChange} disabled={!user}/>
+          <Input id="niceToHaveSkills" placeholder="Comma-separated, e.g., GraphQL, Docker, AWS" value={formData.niceToHaveSkills || ''} onChange={handleInputChange} disabled={!user || loading}/>
         </div>
         
-        <Button onClick={handleGenerate} disabled={loading || !canGenerate()}>
-          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-          Generate & Save Posting
-        </Button>
+        {/* Initial Generation Button */}
+        {!generatedPosting && (
+          <Button onClick={() => handleGenerate(false)} disabled={loading || !canGenerate()}>
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+            Generate Job Posting
+          </Button>
+        )}
         
-        {loading && <p className="text-sm text-muted-foreground animate-pulse">AI is thinking...</p>}
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
         
-        {generatedPosting && (
-          <div className="space-y-2 pt-4">
-            <Label className="font-semibold text-lg">Generated Job Posting</Label>
-            <Textarea readOnly value={generatedPosting} className="min-h-[400px] bg-muted/50 font-sans" />
-            <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(generatedPosting)}>Copy Text</Button>
+        {/* Generated Content and Refinement Section */}
+        {(generatedPosting || loading) && (
+          <div className="space-y-4 pt-4 border-t mt-4">
+             <div className="space-y-2">
+              <Label className="font-semibold text-lg">Generated Job Posting</Label>
+              <Textarea readOnly value={generatedPosting} className="min-h-[400px] bg-muted/50 font-sans" />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="refinement">Refine the Posting (Optional)</Label>
+              <Textarea id="refinement" placeholder="e.g., 'Make the tone more casual' or 'Add a section about company benefits.'" className="min-h-[60px]" value={refinement} onChange={(e) => setRefinement(e.target.value)} disabled={loading} />
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => handleGenerate(true)} disabled={loading || !refinement}>
+                {loading && refinement ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
+                Refine Posting
+              </Button>
+              <Button onClick={handleSave} variant="outline" disabled={loading || saving}>
+                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Save Posting
+              </Button>
+            </div>
           </div>
         )}
       </CardContent>
@@ -363,6 +428,17 @@ function PreviousPostings() {
   }, [firestore, user]);
 
   const { data: jobPostings, isLoading } = useCollection<JobPosting>(jobPostingsQuery);
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  if (!isClient) {
+    // Render nothing on the server to avoid hydration mismatch with demo data
+    return <Card><CardHeader><CardTitle className="font-headline">Previous Job Postings</CardTitle><CardDescription>View and manage your previously generated job postings.</CardDescription></CardHeader><CardContent><Loader2 className="animate-spin" /></CardContent></Card>;
+  }
+
   const allPostings = [...demoPostings, ...(jobPostings || [])];
 
   return (
@@ -379,26 +455,28 @@ function PreviousPostings() {
             <p className="mt-4">You haven't generated any job postings yet.</p>
           </div>
         )}
-        <div className="space-y-4">
-          {allPostings.map((posting) => (
-            <Card key={posting.id} className="p-4">
-              <div className="flex flex-col sm:flex-row justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-4 mb-2">
-                     <h4 className="font-semibold text-lg">{posting.jobTitle}</h4>
-                     <Badge variant={posting.status === 'active' ? 'default' : 'secondary'}>{posting.status}</Badge>
+        {!isLoading && allPostings.length > 0 && (
+          <div className="space-y-4">
+            {allPostings.map((posting) => (
+              <Card key={posting.id} className="p-4">
+                <div className="flex flex-col sm:flex-row justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-4 mb-2">
+                       <h4 className="font-semibold text-lg">{posting.jobTitle}</h4>
+                       <Badge variant={posting.status === 'active' ? 'default' : 'secondary'}>{posting.status}</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      at {posting.companyName} &bull; {formatDistanceToNow(posting.createdAt.toDate(), { addSuffix: true })}
+                    </p>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    at {posting.companyName} &bull; {formatDistanceToNow(posting.createdAt.toDate(), { addSuffix: true })}
-                  </p>
+                  <div className="flex items-center gap-2">
+                     <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(posting.jobPostingText)}>Copy Text</Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                   <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(posting.jobPostingText)}>Copy Text</Button>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
