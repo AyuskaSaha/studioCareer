@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, Lightbulb, Search, Briefcase, User, Save, FileText, CheckCircle, XCircle, Circle } from 'lucide-react';
+import { Loader2, Sparkles, Lightbulb, Search, Briefcase, User, Save, FileText, CheckCircle, XCircle, Circle, Trash2 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -196,7 +196,7 @@ function ResumeBuilder() {
   const handleSaveResume = async () => {
     if (!firestore) {
         toast({
-            variant: "destructive",
+            variant: "default",
             title: "Demo Mode",
             description: "Saving is disabled in demo mode. Your resume will be used for applying within this session.",
         });
@@ -396,9 +396,11 @@ function JobSearch({ onApply }: { onApply: (job: AppJobPosting) => void }) {
     setTimeout(() => {
       const lowercasedQuery = queryText.toLowerCase();
       const filteredJobs = jobs.filter(job => 
-        job.jobTitle.toLowerCase().includes(lowercasedQuery) ||
-        job.companyName.toLowerCase().includes(lowercasedQuery) ||
-        job.jobPostingText.toLowerCase().includes(lowercasedQuery)
+        job.status === 'active' && (
+          job.jobTitle.toLowerCase().includes(lowercasedQuery) ||
+          job.companyName.toLowerCase().includes(lowercasedQuery) ||
+          job.jobPostingText.toLowerCase().includes(lowercasedQuery)
+        )
       );
       setResults(filteredJobs);
       setIsLoading(false);
@@ -413,7 +415,7 @@ function JobSearch({ onApply }: { onApply: (job: AppJobPosting) => void }) {
      <Card className="max-w-4xl mx-auto">
       <CardHeader>
         <CardTitle className="font-headline">Job Search</CardTitle>
-        <CardDescription>Search for job openings from our employer network.</CardDescription>
+        <CardDescription>Search for active job openings from our employer network.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex gap-2">
@@ -544,7 +546,7 @@ function ApplicationProgressBar({ status }: { status: ApplicationStatus }) {
 }
 
 
-function ApplicationTracker({ applications }: { applications: Application[] }) {
+function ApplicationTracker({ applications, onWithdraw }: { applications: Application[], onWithdraw: (applicationId: string) => void }) {
   return (
     <Card className="max-w-4xl mx-auto">
       <CardHeader>
@@ -566,7 +568,13 @@ function ApplicationTracker({ applications }: { applications: Application[] }) {
                   </div>
                 </div>
               </div>
-              <p className="text-sm text-muted-foreground mt-3 pt-3 border-t">{app.statusText}</p>
+              <div className="flex items-center justify-between mt-3 pt-3 border-t">
+                <p className="text-sm text-muted-foreground ">{app.statusText}</p>
+                <Button variant="destructive" size="sm" onClick={() => onWithdraw(app.id)}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Withdraw
+                </Button>
+              </div>
             </Card>
           ))
         ) : (
@@ -614,6 +622,15 @@ export default function JobSeekerPage() {
     setActiveTab("tracker");
   }, [applications, toast]);
 
+  const handleWithdraw = useCallback((applicationId: string) => {
+    const withdrawnApp = applications.find(app => app.id === applicationId);
+    setApplications(prev => prev.filter(app => app.id !== applicationId));
+    toast({
+      title: "Application Withdrawn",
+      description: `You have withdrawn your application for ${withdrawnApp?.jobTitle}.`,
+    });
+  }, [applications, toast]);
+
 
   return (
     <div className="container mx-auto max-w-7xl py-8 px-4">
@@ -638,9 +655,11 @@ export default function JobSeekerPage() {
           <JobSearch onApply={handleApply} />
         </TabsContent>
         <TabsContent value="tracker" className="mt-4">
-          <ApplicationTracker applications={applications} />
+          <ApplicationTracker applications={applications} onWithdraw={handleWithdraw} />
         </TabsContent>
       </Tabs>
     </div>
   );
 }
+
+    
