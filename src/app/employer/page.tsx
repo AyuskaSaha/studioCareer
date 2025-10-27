@@ -404,6 +404,7 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
   const [selectedJob, setSelectedJob] = useState<AppJobPosting | null>(null);
   const [rankedResumes, setRankedResumes] = useState<RankResumesOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [decisions, setDecisions] = useState<Record<number, 'Accepted' | 'Rejected'>>({});
   const rankingImage = PlaceHolderImages.find(img => img.id === 'resume-ranking');
   const { toast } = useToast();
 
@@ -413,6 +414,7 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
     setLoading(true);
     setError(null);
     setRankedResumes(null);
+    setDecisions({});
     try {
       // For the demo, we use pre-canned results.
       // In a real app, you would make the API call here:
@@ -429,7 +431,8 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
     }
   };
 
-  const handleDecision = (candidateName: string, decision: 'Accepted' | 'Rejected') => {
+  const handleDecision = (rank: number, candidateName: string, decision: 'Accepted' | 'Rejected') => {
+    setDecisions(prev => ({ ...prev, [rank]: decision }));
     toast({
       title: `Candidate ${decision}`,
       description: `${candidateName} has been ${decision.toLowerCase()}.`,
@@ -568,8 +571,12 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
             <div className="space-y-4">
               {rankedResumes.map(item => {
                 const candidateName = item.resume.match(/Name: (.*)/)?.[1] || 'Unknown Candidate';
+                const decision = decisions[item.rank];
                 return (
-                <Card key={item.rank} className="p-4">
+                <Card key={item.rank} className={cn("p-4 transition-all",
+                  decision === 'Accepted' && 'border-2 border-green-500',
+                  decision === 'Rejected' && 'border-2 border-destructive'
+                )}>
                   <div className="flex items-start gap-4">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg flex-shrink-0">{item.rank}</div>
                     <div className="flex-1">
@@ -583,16 +590,18 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
 
                       <ShortcomingAnalysis resume={item.resume} jobDescription={selectedJob.jobPostingText} />
 
-                      <div className="flex gap-2 mt-4">
-                        <Button size="sm" onClick={() => handleDecision(candidateName, 'Accepted')} className="bg-green-600 hover:bg-green-700">
-                          <Check className="mr-2 h-4 w-4" />
-                          Accept
-                        </Button>
-                        <Button size="sm" variant="destructive" onClick={() => handleDecision(candidateName, 'Rejected')}>
-                          <X className="mr-2 h-4 w-4" />
-                          Reject
-                        </Button>
-                      </div>
+                      {!decision && (
+                        <div className="flex gap-2 mt-4">
+                          <Button size="sm" onClick={() => handleDecision(item.rank, candidateName, 'Accepted')} className="bg-green-600 hover:bg-green-700">
+                            <Check className="mr-2 h-4 w-4" />
+                            Accept
+                          </Button>
+                          <Button size="sm" variant="destructive" onClick={() => handleDecision(item.rank, candidateName, 'Rejected')}>
+                            <X className="mr-2 h-4 w-4" />
+                            Reject
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </Card>
@@ -700,3 +709,5 @@ export default function EmployerPage() {
     </div>
   );
 }
+
+    
