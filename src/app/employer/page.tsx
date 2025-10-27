@@ -22,11 +22,17 @@ import { collection, query, orderBy, where, Timestamp, addDoc, serverTimestamp }
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
 import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
+type AppJobPosting = {
+  id: string;
+  title: string;
+  description: string;
+  icon: JSX.Element;
+  jobDescription: string;
+};
 
-type JobPosting = {
+type FirestoreJobPosting = {
   id: string;
   jobTitle: string;
   companyName: string;
@@ -35,14 +41,14 @@ type JobPosting = {
   status: 'active' | 'inactive';
 }
 
-function JobPostingGenerator() {
+function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) => void }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<Partial<Omit<JobPostingInput, 'userProfileId'>>>({ jobType: 'Full-time' });
   const [generatedPosting, setGeneratedPosting] = useState<string>('');
   const [refinement, setRefinement] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const { user, auth, firestore } = useFirebase();
+  const { user, firestore } = useFirebase();
   const { toast } = useToast();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -56,12 +62,12 @@ function JobPostingGenerator() {
   
   const canGenerate = () => {
     const { jobTitle, companyName, location, description, responsibilities, mustHaveSkills } = formData;
-    return jobTitle && companyName && location && description && responsibilities && mustHaveSkills && user;
+    return jobTitle && companyName && location && description && responsibilities && mustHaveSkills;
   };
 
   const handleGenerate = async (isRefinement = false) => {
     if (!canGenerate()) {
-      setError("Please fill out all required fields and ensure you are logged in.");
+      setError("Please fill out all required fields.");
       return;
     }
     setLoading(true);
@@ -71,9 +77,11 @@ function JobPostingGenerator() {
     }
 
     try {
+      // Use a placeholder UID if user is not logged in.
+      const userId = user ? user.uid : 'anonymous-user';
       const input: JobPostingInput = {
         ...formData as Omit<JobPostingInput, 'userProfileId' | 'refinement' | 'previousPosting'>,
-        userProfileId: user!.uid,
+        userProfileId: userId,
         ...(isRefinement && { refinement, previousPosting: generatedPosting })
       };
       
@@ -89,30 +97,44 @@ function JobPostingGenerator() {
   };
 
   const handleSave = async () => {
-    if (!user || !firestore || !generatedPosting) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Cannot save posting. Make sure you are logged in and have generated a posting.'});
+    if (!generatedPosting) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Cannot save an empty posting.'});
       return;
     }
-    setSaving(true);
-    setError(null);
-    const jobPostingsCol = collection(firestore, 'jobPostings');
-    const docData = {
-      userProfileId: user.uid,
-      jobTitle: formData.jobTitle,
-      companyName: formData.companyName,
-      location: formData.location,
-      salaryRange: formData.salaryRange,
-      jobType: formData.jobType,
-      jobPostingText: generatedPosting,
-      createdAt: serverTimestamp(),
-      status: 'active'
+    
+    const newJob: AppJobPosting = {
+      id: `new-${Date.now()}`,
+      title: formData.jobTitle || 'Untitled Job',
+      description: formData.description || 'No description provided.',
+      icon: <Briefcase className="h-8 w-8" />,
+      jobDescription: generatedPosting,
     };
+    onJobSaved(newJob);
 
-    addDocumentNonBlocking(jobPostingsCol, docData);
+    setSaving(true);
+    if (user && firestore) {
+      setError(null);
+      const jobPostingsCol = collection(firestore, 'jobPostings');
+      const docData = {
+        userProfileId: user.uid,
+        jobTitle: formData.jobTitle,
+        companyName: formData.companyName,
+        location: formData.location,
+        salaryRange: formData.salaryRange,
+        jobType: formData.jobType,
+        jobPostingText: generatedPosting,
+        createdAt: serverTimestamp(),
+        status: 'active'
+      };
 
+      addDocumentNonBlocking(jobPostingsCol, docData);
+    } else {
+       console.log("Job saved to session state. User not logged in for Firestore save.");
+    }
+    
     toast({
-      title: "Job Posting Saved!",
-      description: "Your new job posting has been saved to your 'Previous Postings'.",
+      title: "Job Posting Ready!",
+      description: "Your new job is now available in the 'Resume Ranker' tab.",
     });
     setSaving(false);
   }
@@ -124,37 +146,26 @@ function JobPostingGenerator() {
         <CardDescription>Fill in the details below, and let our AI craft the perfect job posting. You can then refine it with further instructions.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!user && (
-          <Alert>
-            <Briefcase className="h-4 w-4" />
-            <AlertTitle>Please Log In</AlertTitle>
-            <AlertDescription>
-              You need to be logged in to generate and save job postings.
-              <Button variant="link" className="p-0 h-auto ml-1" onClick={() => auth && initiateAnonymousSignIn(auth)}>Log in anonymously</Button>
-            </AlertDescription>
-          </Alert>
-        )}
-
         <div className="grid md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="jobTitle">Job Title</Label>
-            <Input id="jobTitle" placeholder="e.g., Senior Frontend Developer" value={formData.jobTitle || ''} onChange={handleInputChange} disabled={!user || loading}/>
+            <Input id="jobTitle" placeholder="e.g., Senior Frontend Developer" value={formData.jobTitle || ''} onChange={handleInputChange} disabled={loading}/>
           </div>
           <div className="space-y-2">
             <Label htmlFor="companyName">Company Name</Label>
-            <Input id="companyName" placeholder="e.g., Acme Inc." value={formData.companyName || ''} onChange={handleInputChange} disabled={!user || loading}/>
+            <Input id="companyName" placeholder="e.g., Acme Inc." value={formData.companyName || ''} onChange={handleInputChange} disabled={loading}/>
           </div>
           <div className="space-y-2">
             <Label htmlFor="location">Location</Label>
-            <Input id="location" placeholder="e.g., San Francisco, CA or Remote" value={formData.location || ''} onChange={handleInputChange} disabled={!user || loading}/>
+            <Input id="location" placeholder="e.g., San Francisco, CA or Remote" value={formData.location || ''} onChange={handleInputChange} disabled={loading}/>
           </div>
           <div className="space-y-2">
             <Label htmlFor="salaryRange">Salary Range (Optional)</Label>
-            <Input id="salaryRange" placeholder="e.g., $120,000 - $150,000" value={formData.salaryRange || ''} onChange={handleInputChange} disabled={!user || loading}/>
+            <Input id="salaryRange" placeholder="e.g., $120,000 - $150,000" value={formData.salaryRange || ''} onChange={handleInputChange} disabled={loading}/>
           </div>
           <div className="space-y-2">
             <Label htmlFor="jobType">Job Type</Label>
-             <Select value={formData.jobType} onValueChange={handleSelectChange} disabled={!user || loading}>
+             <Select value={formData.jobType} onValueChange={handleSelectChange} disabled={loading}>
               <SelectTrigger id="jobType">
                 <SelectValue placeholder="Select job type" />
               </SelectTrigger>
@@ -169,19 +180,19 @@ function JobPostingGenerator() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="description">Company & Role Description</Label>
-          <Textarea id="description" placeholder="Describe your company's mission, culture, and the role's purpose." className="min-h-[100px]" value={formData.description || ''} onChange={handleInputChange} disabled={!user || loading}/>
+          <Textarea id="description" placeholder="Describe your company's mission, culture, and the role's purpose." className="min-h-[100px]" value={formData.description || ''} onChange={handleInputChange} disabled={loading}/>
         </div>
         <div className="space-y-2">
           <Label htmlFor="responsibilities">Responsibilities</Label>
-          <Textarea id="responsibilities" placeholder="List the key responsibilities, e.g., - Develop and maintain web applications..." className="min-h-[120px]" value={formData.responsibilities || ''} onChange={handleInputChange} disabled={!user || loading}/>
+          <Textarea id="responsibilities" placeholder="List the key responsibilities, e.g., - Develop and maintain web applications..." className="min-h-[120px]" value={formData.responsibilities || ''} onChange={handleInputChange} disabled={loading}/>
         </div>
         <div className="space-y-2">
           <Label htmlFor="mustHaveSkills">Must-Have Skills</Label>
-          <Input id="mustHaveSkills" placeholder="Comma-separated, e.g., React, TypeScript, CSS" value={formData.mustHaveSkills || ''} onChange={handleInputChange} disabled={!user || loading}/>
+          <Input id="mustHaveSkills" placeholder="Comma-separated, e.g., React, TypeScript, CSS" value={formData.mustHaveSkills || ''} onChange={handleInputChange} disabled={loading}/>
         </div>
         <div className="space-y-2">
           <Label htmlFor="niceToHaveSkills">Nice-to-Have Skills (Optional)</Label>
-          <Input id="niceToHaveSkills" placeholder="Comma-separated, e.g., GraphQL, Docker, AWS" value={formData.niceToHaveSkills || ''} onChange={handleInputChange} disabled={!user || loading}/>
+          <Input id="niceToHaveSkills" placeholder="Comma-separated, e.g., GraphQL, Docker, AWS" value={formData.niceToHaveSkills || ''} onChange={handleInputChange} disabled={loading}/>
         </div>
         
         {!generatedPosting && (
@@ -308,33 +319,16 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
   )
 }
 
-const demoJobPostings = [
-  {
-    id: 'frontend-dev',
-    title: 'Senior Frontend Developer',
-    description: 'Seeking an experienced frontend developer to build modern, responsive web applications using React and Next.js. You will be responsible for leading frontend projects, mentoring junior developers, and collaborating with designers to create a seamless user experience.',
-    icon: <Code className="h-8 w-8" />,
-    jobDescription: 'Job Title: Senior Frontend Developer\nSkills: React, Next.js, TypeScript, Tailwind CSS, REST APIs\nExperience: 5+ years of professional frontend development experience, including leadership roles.'
-  },
-  {
-    id: 'pm',
-    title: 'Agile Project Manager',
-    description: 'We are looking for a certified Project Manager to lead our software development teams. You will be responsible for planning sprints, managing timelines, and ensuring project goals are met. Strong communication and leadership skills are a must.',
-    icon: <Users className="h-8 w-8" />,
-    jobDescription: 'Job Title: Agile Project Manager\nSkills: Agile, Scrum, JIRA, Confluence, Risk Management\nExperience: 3+ years in a project management role in a tech company. Scrum Master certification is a plus.'
-  }
-];
-
-
-function ResumeRanker() {
+function ResumeRanker({ jobPostings, onSelectJob }: { jobPostings: AppJobPosting[]; onSelectJob: (job: AppJobPosting) => void; }) {
   const [loading, setLoading] = useState(false);
-  const [selectedJob, setSelectedJob] = useState<{ id: string; title: string; jobDescription: string; } | null>(null);
+  const [selectedJob, setSelectedJob] = useState<AppJobPosting | null>(null);
   const [rankedResumes, setRankedResumes] = useState<RankResumesOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
   const rankingImage = PlaceHolderImages.find(img => img.id === 'resume-ranking');
 
-  const handleRank = async (job: typeof demoJobPostings[0]) => {
+  const handleRank = async (job: AppJobPosting) => {
     setSelectedJob(job);
+    onSelectJob(job);
     setLoading(true);
     setError(null);
     setRankedResumes(null);
@@ -353,13 +347,13 @@ function ResumeRanker() {
     <Card>
       <CardHeader>
         <CardTitle className="font-headline">Top Resume Ranker</CardTitle>
-        <CardDescription>Select a demo job posting to automatically find and rank the top candidates from our talent pool.</CardDescription>
+        <CardDescription>Select a job posting to automatically find and rank the top candidates from our talent pool.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         
         {!selectedJob ? (
            <div className="grid md:grid-cols-2 gap-4">
-            {demoJobPostings.map(job => (
+            {jobPostings.map(job => (
               <Card 
                 key={job.id} 
                 className="cursor-pointer hover:shadow-md hover:border-primary transition-all"
@@ -384,7 +378,6 @@ function ResumeRanker() {
             <Button variant="outline" onClick={() => { setSelectedJob(null); setRankedResumes(null); }}>&larr; Back to Job Postings</Button>
           </div>
         )}
-
 
         {loading && <div className="flex items-center gap-2 pt-4"><Loader2 className="h-5 w-5 animate-spin" /> <p className="text-sm text-muted-foreground animate-pulse">Searching and ranking candidates, this may take a moment...</p></div>}
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
@@ -428,7 +421,7 @@ function ResumeRanker() {
   );
 }
 
-const demoPostings: JobPosting[] = [
+const demoFirestorePostings: FirestoreJobPosting[] = [
     {
       id: 'demo-1',
       jobTitle: 'Senior Frontend Developer',
@@ -458,7 +451,7 @@ function PreviousPostings() {
     );
   }, [firestore, user]);
 
-  const { data: jobPostings, isLoading } = useCollection<JobPosting>(jobPostingsQuery);
+  const { data: jobPostings, isLoading } = useCollection<FirestoreJobPosting>(jobPostingsQuery);
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
@@ -468,8 +461,11 @@ function PreviousPostings() {
   if (!isClient) {
     return <Card><CardHeader><CardTitle className="font-headline">Previous Job Postings</CardTitle><CardDescription>View and manage your previously generated job postings.</CardDescription></CardHeader><CardContent><Loader2 className="animate-spin" /></CardContent></Card>;
   }
-
-  const allPostings = [...(jobPostings || []), ...demoPostings];
+  
+  // Show demo postings if user is not logged in or has no postings
+  const postingsToShow = (!user || (jobPostings && jobPostings.length === 0))
+    ? demoFirestorePostings
+    : (jobPostings || []);
 
   return (
     <Card>
@@ -479,15 +475,15 @@ function PreviousPostings() {
       </CardHeader>
       <CardContent className="space-y-4">
         {isLoading && <Loader2 className="animate-spin" />}
-        {!isLoading && allPostings.length === 0 && (
+        {!isLoading && postingsToShow.length === 0 && (
           <div className="text-center text-muted-foreground py-12">
             <FileText className="mx-auto h-12 w-12" />
             <p className="mt-4">You haven't generated any job postings yet.</p>
           </div>
         )}
-        {!isLoading && allPostings.length > 0 && (
+        {!isLoading && postingsToShow.length > 0 && (
           <div className="space-y-4">
-            {allPostings.map((posting) => (
+            {postingsToShow.map((posting) => (
               <Card key={posting.id} className="p-4">
                 <div className="flex flex-col sm:flex-row justify-between gap-4">
                   <div className="flex-1">
@@ -514,19 +510,48 @@ function PreviousPostings() {
 
 
 export default function EmployerPage() {
+  const [activeTab, setActiveTab] = useState("ranker");
+  const [jobPostings, setJobPostings] = useState<AppJobPosting[]>([
+    {
+      id: 'frontend-dev',
+      title: 'Senior Frontend Developer',
+      description: 'Seeking an experienced frontend developer to build modern, responsive web applications using React and Next.js. You will be responsible for leading frontend projects, mentoring junior developers, and collaborating with designers to create a seamless user experience.',
+      icon: <Code className="h-8 w-8" />,
+      jobDescription: 'Job Title: Senior Frontend Developer\nSkills: React, Next.js, TypeScript, Tailwind CSS, REST APIs\nExperience: 5+ years of professional frontend development experience, including leadership roles.'
+    },
+    {
+      id: 'pm',
+      title: 'Agile Project Manager',
+      description: 'We are looking for a certified Project Manager to lead our software development teams. You will be responsible for planning sprints, managing timelines, and ensuring project goals are met. Strong communication and leadership skills are a must.',
+      icon: <Users className="h-8 w-8" />,
+      jobDescription: 'Job Title: Agile Project Manager\nSkills: Agile, Scrum, JIRA, Confluence, Risk Management\nExperience: 3+ years in a project management role in a tech company. Scrum Master certification is a plus.'
+    }
+  ]);
+
+  const handleJobSaved = (newJob: AppJobPosting) => {
+    setJobPostings(prev => [...prev, newJob]);
+    // Switch to the ranker tab to show the new job
+    setActiveTab('ranker');
+  };
+  
+  const handleSelectJobInRanker = (job: AppJobPosting) => {
+     // This function is just to complete the loop, no state change needed here
+     // as the ranker handles its own internal selected job state.
+  }
+
   return (
     <div className="container mx-auto max-w-5xl py-8 px-4">
-      <Tabs defaultValue="ranker" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="ranker">Resume Ranker</TabsTrigger>
           <TabsTrigger value="generator">Job Posting Generator</TabsTrigger>
           <TabsTrigger value="previous">Previous Postings</TabsTrigger>
         </TabsList>
         <TabsContent value="ranker" className="mt-4">
-          <ResumeRanker />
+          <ResumeRanker jobPostings={jobPostings} onSelectJob={handleSelectJobInRanker} />
         </TabsContent>
         <TabsContent value="generator" className="mt-4">
-          <JobPostingGenerator />
+          <JobPostingGenerator onJobSaved={handleJobSaved} />
         </TabsContent>
         <TabsContent value="previous" className="mt-4">
           <PreviousPostings />
