@@ -5,7 +5,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { initializeFirebase } from '@/firebase';
+import { initializeServerFirebase } from '@/firebase/server';
 import { collection, getDocs } from 'firebase/firestore';
 
 const GetAllResumesOutputSchema = z.array(z.string().describe("The text content of a single resume."));
@@ -19,7 +19,7 @@ export const getAllResumesTool = ai.defineTool(
   },
   async () => {
     console.log('Fetching all resumes from Firestore...');
-    const { firestore } = initializeFirebase();
+    const { firestore } = initializeServerFirebase();
     const resumesCol = collection(firestore, 'resumes');
     const resumeSnapshot = await getDocs(resumesCol);
     const resumeList = resumeSnapshot.docs.map(doc => doc.data().resumeText as string);
