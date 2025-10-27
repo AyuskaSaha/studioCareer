@@ -1,14 +1,14 @@
+
 "use client";
 
 import { useState, useMemo } from 'react';
-import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, Lightbulb, Search, Briefcase, GraduationCap, User, Save } from 'lucide-react';
+import { Loader2, Sparkles, Lightbulb, Search, Briefcase, User, Save } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -199,15 +199,12 @@ function ResumeBuilder() {
         return;
     }
     
-    // In a real app, you would have user auth. For demo, we use a static ID.
     const userId = 'anonymous-user'; 
 
     setSaving(true);
     setError(null);
     try {
       const resumeText = resumeToText(resumeData);
-      // For a multi-resume system, you'd generate a unique ID.
-      // Here, we use a static ID for simplicity, creating one resume per demo session.
       const resumeId = `resume-for-${userId}`; 
       const docRef = doc(firestore, "resumes", resumeId);
       const resumePayload = {
@@ -383,61 +380,54 @@ function JobSuggestions() {
   )
 }
 
+const demoJobs = [
+  {
+    id: '1',
+    jobTitle: 'Senior Frontend Developer',
+    companyName: 'Stripe',
+    location: 'Remote',
+    jobPostingText: 'As a Senior Frontend Developer at Stripe, you will build beautiful and functional user interfaces that are used by millions of businesses worldwide. You will work with a modern tech stack, including React, TypeScript, and Next.js.',
+    timestamp: 'Posted 2 days ago'
+  },
+  {
+    id: '2',
+    jobTitle: 'Product Manager, AI',
+    companyName: 'Google',
+    location: 'Mountain View, CA',
+    jobPostingText: 'We are looking for an experienced Product Manager to lead our AI initiatives. You will define the product strategy, work with engineering to build innovative features, and launch them to a global audience.',
+    timestamp: 'Posted 5 days ago'
+  },
+  {
+    id: '3',
+    jobTitle: 'Data Scientist',
+    companyName: 'Netflix',
+    location: 'Los Gatos, CA',
+    jobPostingText: 'Join the Netflix content analytics team to help decide which shows and movies get made. You will use statistical analysis and machine learning to model viewer preferences and predict content success.',
+    timestamp: 'Posted 1 week ago'
+  },
+];
+
+
 function JobSearch() {
   const [queryText, setQueryText] = useState('');
-  const [submittedQuery, setSubmittedQuery] = useState('');
-  const { firestore } = useFirebase();
+  const [isLoading, setIsLoading] = useState(false);
+  const [results, setResults] = useState<typeof demoJobs | null>(null);
   const { toast } = useToast();
 
-  const jobsQuery = useMemoFirebase(() => {
-    if (!firestore || !submittedQuery) return null;
-    return query(
-      collection(firestore, 'jobPostings'),
-      where('status', '==', 'active'),
-      where('jobTitle', '>=', submittedQuery),
-      where('jobTitle', '<=', submittedQuery + '\uf8ff')
-    );
-  }, [firestore, submittedQuery]);
-
-  const { data: results, isLoading, error } = useCollection<{id: string; jobTitle: string; companyName: string; jobPostingText: string; location: string}>(jobsQuery);
-  
   const handleSearch = () => {
-    setSubmittedQuery(queryText);
+    setIsLoading(true);
+    // Simulate a network request
+    setTimeout(() => {
+      setResults(demoJobs);
+      setIsLoading(false);
+    }, 1000);
   };
   
-  const handleApply = async (jobId: string) => {
-    if (!firestore) {
-      toast({
-        title: "Application Sent!",
-        description: "Your resume has been submitted for this demo session.",
-      });
-      return;
-    }
-    
-    const userId = 'anonymous-user';
-
-    try {
-      const applicationsCol = collection(firestore, 'applications');
-      await addDoc(applicationsCol, {
-        jobPostingId: jobId,
-        userProfileId: userId,
-        resumeId: `resume-for-${userId}`, // Matches the ID used in resume builder
-        applicationDate: new Date(),
-        status: 'submitted',
-      });
-      
-      toast({
-        title: "Application Sent!",
-        description: "Your resume has been submitted. Employers can now see you in their ranking list.",
-      });
-    } catch(e) {
-      console.error("Failed to submit application", e);
-      toast({
-        variant: 'destructive',
-        title: "Application Failed",
-        description: "Could not submit your application. Please try again.",
-      });
-    }
+  const handleApply = (jobId: string) => {
+    toast({
+      title: "Application Sent (Demo)",
+      description: "In a real app, this would submit your resume to the employer.",
+    });
   }
 
   return (
@@ -459,19 +449,19 @@ function JobSearch() {
             Search
           </Button>
         </div>
-        {isLoading && <p className="text-sm text-muted-foreground animate-pulse">Searching for jobs...</p>}
-        {error && <p className="text-sm text-destructive mt-2">Search failed. Please check your connection or try again.</p>}
+        {isLoading && <p className="text-sm text-muted-foreground animate-pulse pt-4">Searching for jobs...</p>}
         
-        {submittedQuery && !isLoading && (
+        {results && !isLoading && (
            <div className="pt-4 space-y-4">
-            {results && results.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">No jobs found for "{submittedQuery}". Try another search.</p>
+            {results.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">No jobs found for "{queryText}". Try another search.</p>
             ) : (
-              results?.map((job, i) => (
-                <Card key={i} className="flex flex-col sm:flex-row justify-between sm:items-center p-4 gap-4">
+              results.map((job) => (
+                <Card key={job.id} className="flex flex-col sm:flex-row justify-between sm:items-center p-4 gap-4">
                   <div className="flex-1">
                     <h4 className="font-semibold">{job.jobTitle}</h4>
                     <p className="text-sm text-muted-foreground">{job.companyName} - {job.location}</p>
+                    <p className="text-sm text-muted-foreground mt-1">{job.timestamp}</p>
                     <p className="text-sm mt-2 line-clamp-2">{job.jobPostingText}</p>
                   </div>
                   <Button onClick={() => handleApply(job.id)}>Apply</Button>
@@ -484,7 +474,6 @@ function JobSearch() {
     </Card>
   )
 }
-
 
 export default function JobSeekerPage() {
   return (
@@ -512,3 +501,5 @@ export default function JobSeekerPage() {
     </div>
   );
 }
+
+    
