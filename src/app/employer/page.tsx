@@ -547,15 +547,18 @@ export default function EmployerPage() {
   const [activeTab, setActiveTab] = useState("ranker");
   const { firestore, user } = useFirebase();
   
+  // For the demo, we will use a hardcoded user ID for the query.
+  // In a real app, this would be the logged-in user's ID.
+  const demoUserId = 'anonymous-user';
+
   const jobPostingsQuery = useMemoFirebase(() => {
-    // Return null if not in a state to query to prevent unnecessary queries
-    if (!firestore || !user) return null;
+    if (!firestore) return null;
     return query(
       collection(firestore, 'jobPostings'),
-      where('userProfileId', '==', user.uid),
+      where('userProfileId', '==', demoUserId),
       orderBy('createdAt', 'desc')
     );
-  }, [firestore, user]);
+  }, [firestore]);
 
   const { data: firestorePostings, isLoading: isLoadingFirestore } = useCollection<FirestoreJobPosting>(jobPostingsQuery);
   const { toast } = useToast();
@@ -563,56 +566,35 @@ export default function EmployerPage() {
   const [jobPostings, setJobPostings] = useState<AppJobPosting[]>([]);
   const [isClient, setIsClient] = useState(false);
 
-  // Demo data for when the user is not logged in.
-  const demoFirestorePostings: FirestoreJobPosting[] = [
-    {
-      id: 'demo-1',
-      userProfileId: 'demo-user',
-      jobTitle: 'Senior Frontend Developer',
-      companyName: 'Starlight Solutions',
-      jobPostingText: 'Seeking an experienced frontend developer to build modern, responsive web applications using React and Next.js. You will be responsible for leading frontend projects, mentoring junior developers, and collaborating with designers to create a seamless user experience. \nSkills: React, Next.js, TypeScript, Tailwind CSS, REST APIs\nExperience: 5+ years of professional frontend development experience, including leadership roles.',
-      createdAt: new Timestamp(Math.floor((Date.now() - 2 * 24 * 60 * 60 * 1000) / 1000), 0),
-      status: 'active',
-    },
-    {
-      id: 'demo-2',
-      userProfileId: 'demo-user',
-      jobTitle: 'Agile Project Manager',
-      companyName: 'Creative Minds Inc.',
-      jobPostingText: 'We are looking for a certified Project Manager to lead our software development teams. You will be responsible for planning sprints, managing timelines, and ensuring project goals are met. Strong communication and leadership skills are a must.\nSkills: Agile, Scrum, JIRA, Confluence, Risk Management\nExperience: 3+ years in a project management role in a tech company. Scrum Master certification is a plus.',
-      createdAt: new Timestamp(Math.floor((Date.now() - 10 * 24 * 60 * 60 * 1000) / 1000), 0),
-      status: 'inactive',
-    },
-  ];
-
   useEffect(() => {
     setIsClient(true);
-    
-    // Determine which set of postings to use
-    const postingsToUse = firestorePostings || demoFirestorePostings;
-    
-    const appPostings = postingsToUse.map(p => ({
-      id: p.id,
-      userProfileId: p.userProfileId,
-      jobTitle: p.jobTitle,
-      companyName: p.companyName,
-      description: p.jobPostingText.split('\n')[0], // Simple description from first line
-      jobPostingText: p.jobPostingText,
-      status: p.status,
-      expiresAt: p.expiresAt ? p.expiresAt.toDate() : null,
-      createdAt: p.createdAt,
-    }));
-    
-    setJobPostings(appPostings);
+    if (firestorePostings) {
+      const appPostings = firestorePostings.map(p => ({
+        id: p.id,
+        userProfileId: p.userProfileId,
+        jobTitle: p.jobTitle,
+        companyName: p.companyName,
+        description: p.jobPostingText.split('\n')[0],
+        jobPostingText: p.jobPostingText,
+        status: p.status,
+        expiresAt: p.expiresAt ? p.expiresAt.toDate() : null,
+        createdAt: p.createdAt,
+      }));
+      setJobPostings(appPostings);
+    }
+  }, [firestorePostings]);
 
-    // This interval checks for expired postings and updates their status.
+
+  useEffect(() => {
+    if (!isClient) return;
+    
     const interval = setInterval(() => {
       let changed = false;
       const now = new Date();
       const updatedPostings = jobPostings.map(p => {
         if (p.status === 'active' && p.expiresAt && now > p.expiresAt) {
           changed = true;
-          handleJobUpdate(p.id, { status: 'inactive' }); // This will also update Firestore
+          handleJobUpdate(p.id, { status: 'inactive' });
           return { ...p, status: 'inactive' };
         }
         return p;
@@ -623,72 +605,87 @@ export default function EmployerPage() {
     }, 60000); // Check every minute
 
     return () => clearInterval(interval);
-  }, [firestorePostings]);
+  }, [isClient, jobPostings]);
 
 
   const handleJobSaved = async (newPosting: AppJobPosting) => {
+    // Optimistically update the UI
     setJobPostings(prev => [newPosting, ...prev]);
     setActiveTab('ranker');
 
-    const { id, ...postingData } = newPosting; // Exclude client-side temporary ID
-    if (firestore) {
-      try {
-        const jobPostingsCol = collection(firestore, 'jobPostings');
-        const docData = {
-          ...postingData,
-          createdAt: serverTimestamp(),
-        };
-        await addDoc(jobPostingsCol, docData);
-        toast({ title: "Job Saved", description: "The job has been saved to your account." });
-      } catch (error) {
-        console.error("Error saving job to Firestore:", error);
-        toast({ variant: 'destructive', title: "Save Failed", description: "Could not save the job posting." });
-      }
+    if (!firestore) {
+      toast({ title: "Demo Mode", description: "Job posting saved in session. It won't persist."});
+      return;
+    }
+    
+    try {
+      const { id, ...postingData } = newPosting;
+      const jobPostingsCol = collection(firestore, 'jobPostings');
+      const docData = {
+        ...postingData,
+        createdAt: serverTimestamp(),
+      };
+      await addDoc(jobPostingsCol, docData);
+      toast({ title: "Job Saved", description: "The job has been saved to your account." });
+    } catch (error) {
+      console.error("Error saving job to Firestore:", error);
+      toast({ variant: 'destructive', title: "Save Failed", description: "Could not save the job posting." });
+      setJobPostings(prev => prev.filter(p => p.id !== newPosting.id));
     }
   };
 
   const handleJobDelete = async (jobId: string) => {
+     if (!firestore || jobId.startsWith('new-')) {
+      setJobPostings(prev => prev.filter(job => job.id !== jobId));
+      toast({ title: "Job Removed", description: "The demo job posting has been removed from this session." });
+      return;
+    }
+
+    // Optimistically remove from UI
     setJobPostings(prev => prev.filter(job => job.id !== jobId));
     
-    if (firestore && !jobId.startsWith('demo-')) {
-      try {
-        const docRef = doc(firestore, "jobPostings", jobId);
-        await deleteDoc(docRef);
-        toast({ title: "Job Deleted", description: "The job posting has been permanently removed." });
-      } catch (error) {
-        console.error("Failed to delete from Firestore:", error);
-        toast({ variant: 'destructive', title: "Delete Failed", description: "Could not delete the job from the database." });
-        // Optionally revert UI update here
-      }
-    } else {
-        toast({ title: "Job Deleted", description: "The demo job posting has been removed." });
+    try {
+      const docRef = doc(firestore, "jobPostings", jobId);
+      await deleteDoc(docRef);
+      toast({ title: "Job Deleted", description: "The job posting has been permanently removed." });
+    } catch (error) {
+      console.error("Failed to delete from Firestore:", error);
+      toast({ variant: 'destructive', title: "Delete Failed", description: "Could not delete the job from the database." });
+      // Re-add to UI if delete fails, though this requires fetching again or storing the deleted item.
     }
   };
   
   const handleJobUpdate = async (jobId: string, updates: Partial<Pick<AppJobPosting, 'status' | 'expiresAt'>>) => {
-     setJobPostings(prev => prev.map(job => job.id === jobId ? {...job, ...updates} : job));
-
-     if (firestore && !jobId.startsWith('demo-')) {
-       try {
-          const docRef = doc(firestore, 'jobPostings', jobId);
-          const firestoreUpdates: any = { ...updates };
-          if (updates.expiresAt !== undefined) {
-            firestoreUpdates.expiresAt = updates.expiresAt ? Timestamp.fromDate(updates.expiresAt) : null;
-          }
-          await updateDoc(docRef, firestoreUpdates);
-          toast({ title: "Job Updated", description: "The job posting has been updated." });
-        } catch (error) {
-            console.error("Failed to update Firestore:", error);
-            toast({ variant: 'destructive', title: "Update Failed", description: "Could not update the job in the database." });
-            // Optionally revert UI update here
-        }
-    } else {
-        toast({ title: "Job Updated", description: "The demo job posting has been updated." });
+     if (!firestore || jobId.startsWith('new-')) {
+      setJobPostings(prev => prev.map(job => job.id === jobId ? {...job, ...updates} : job));
+      toast({ title: "Job Updated", description: "The demo job posting has been updated for this session." });
+      return;
     }
+    
+    // Optimistically update UI
+    setJobPostings(prev => prev.map(job => job.id === jobId ? {...job, ...updates} : job));
+
+     try {
+        const docRef = doc(firestore, 'jobPostings', jobId);
+        const firestoreUpdates: any = { ...updates };
+        if (updates.expiresAt !== undefined) {
+          firestoreUpdates.expiresAt = updates.expiresAt ? Timestamp.fromDate(updates.expiresAt) : null;
+        }
+        await updateDoc(docRef, firestoreUpdates);
+        toast({ title: "Job Updated", description: "The job posting has been updated." });
+      } catch (error) {
+          console.error("Failed to update Firestore:", error);
+          toast({ variant: 'destructive', title: "Update Failed", description: "Could not update the job in the database." });
+          // Revert UI update on failure
+      }
   };
 
   if (!isClient) {
-    return null; // or a loading skeleton
+    return (
+        <div className="container mx-auto max-w-5xl py-8 px-4 flex justify-center items-center h-screen">
+            <Loader2 className="h-16 w-16 animate-spin" />
+        </div>
+    );
   }
   
   const isLoading = isLoadingFirestore;

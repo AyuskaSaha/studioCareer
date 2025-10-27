@@ -191,7 +191,15 @@ function ResumeBuilder() {
   };
   
   const handleSaveResume = async () => {
-    if (!firestore || !user) {
+    if (!firestore) {
+        toast({
+            variant: "destructive",
+            title: "Demo Mode",
+            description: "Saving is disabled in demo mode. Your resume will be used for applying within this session.",
+        });
+        return;
+    }
+    if (!user) {
       toast({
         variant: "destructive",
         title: "Error",
@@ -204,7 +212,9 @@ function ResumeBuilder() {
     setError(null);
     try {
       const resumeText = resumeToText(resumeData);
-      const resumeId = user.uid; // Use user's UID as the document ID for simplicity
+      // For a multi-resume system, you'd generate a unique ID.
+      // Here, we use the user's UID for simplicity, creating one resume per user.
+      const resumeId = user.uid; 
       const docRef = doc(firestore, "resumes", resumeId);
       const resumePayload = {
         id: resumeId,
@@ -223,6 +233,11 @@ function ResumeBuilder() {
     } catch (e: any) {
       console.error(e);
       setError(e.message || "Failed to save resume. Please try again.");
+       toast({
+        variant: "destructive",
+        title: "Save Failed",
+        description: e.message || "Could not save resume.",
+      });
     }
     setSaving(false);
   };
@@ -251,7 +266,7 @@ function ResumeBuilder() {
           <Separator />
 
           <div className="pt-2 flex flex-wrap gap-2">
-            <Button onClick={handleSaveResume} disabled={saving || !user}>
+            <Button onClick={handleSaveResume} disabled={saving}>
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               Save Resume
             </Button>
@@ -377,7 +392,8 @@ function JobSuggestions() {
 function JobSearch() {
   const [queryText, setQueryText] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
-  const { firestore } = useFirebase();
+  const { firestore, user } = useFirebase();
+  const { toast } = useToast();
 
   const jobsQuery = useMemoFirebase(() => {
     if (!firestore || !submittedQuery) return null;
@@ -394,6 +410,16 @@ function JobSearch() {
   const handleSearch = () => {
     setSubmittedQuery(queryText);
   };
+  
+  const handleApply = (jobId: string) => {
+    // In a real app, you would create an "application" document in Firestore.
+    // For this demo, we'll just show a success message.
+    // The resume is saved via the "Resume Builder" tab, which the ranker will pick up.
+    toast({
+      title: "Application Sent!",
+      description: "Your resume has been submitted. Employers can now see you in their ranking list.",
+    });
+  }
 
   return (
      <Card className="max-w-4xl mx-auto">
@@ -429,9 +455,7 @@ function JobSearch() {
                     <p className="text-sm text-muted-foreground">{job.companyName} - {job.location}</p>
                     <p className="text-sm mt-2 line-clamp-2">{job.jobPostingText}</p>
                   </div>
-                  <Button asChild>
-                    <Link href="#" target="_blank" rel="noopener noreferrer">Apply</Link>
-                  </Button>
+                  <Button onClick={() => handleApply(job.id)}>Apply</Button>
                 </Card>
               ))
             )}
