@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -81,13 +82,12 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (newPosting: AppJobPo
     setLoading(true);
     setError(null);
     
-    // Don't clear previous generation if refining
     if(!isRefinement) {
       setGeneratedPosting('');
     }
 
     try {
-      const userId = 'anonymous-user'; // Hardcoded for demo
+      const userId = 'anonymous-user'; 
       const input: JobPostingInput = {
         ...formData as Omit<JobPostingInput, 'userProfileId' | 'refinement' | 'previousPosting'>,
         userProfileId: userId,
@@ -332,7 +332,7 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
   };
 
   const handleDelete = (e: React.MouseEvent, jobId: string) => {
-    e.stopPropagation(); // Prevent card's onClick from firing
+    e.stopPropagation();
     onJobDelete(jobId);
   }
 
@@ -562,7 +562,7 @@ export default function EmployerPage() {
   const { firestore } = useFirebase();
   const demoUserId = 'anonymous-user';
   const { toast } = useToast();
-
+  
   const [jobPostings, setJobPostings] = useState<AppJobPosting[]>([]);
 
   const jobPostingsQuery = useMemoFirebase(() => {
@@ -594,6 +594,26 @@ export default function EmployerPage() {
   }, [firestorePostings]);
 
 
+  const handleJobUpdate = async (jobId: string, updates: Partial<Pick<AppJobPosting, 'status' | 'expiresAt'>>) => {
+      const originalPostings = [...jobPostings];
+      setJobPostings(prev => prev.map(job => job.id === jobId ? { ...job, ...updates } : job));
+
+      if (!firestore || jobId.startsWith('new-')) {
+        toast({ title: "Demo Mode", description: "Status updated for this session only."});
+        return;
+      }
+      
+      try {
+        const docRef = doc(firestore, "jobPostings", jobId);
+        await updateDoc(docRef, updates);
+        toast({ title: "Job Updated", description: "The job posting status has been changed." });
+      } catch (error) {
+        console.error("Error updating job in Firestore:", error);
+        toast({ variant: 'destructive', title: "Update Failed", description: "Could not update the job posting." });
+        setJobPostings(originalPostings);
+      }
+  }
+
   useEffect(() => {
     const interval = setInterval(() => {
       let changed = false;
@@ -609,10 +629,10 @@ export default function EmployerPage() {
       if (changed) {
         setJobPostings(updatedPostings);
       }
-    }, 60000); // Check every minute
+    }, 60000); 
 
     return () => clearInterval(interval);
-  }, [jobPostings]);
+  }, [jobPostings, handleJobUpdate]);
 
 
   const handleJobSaved = async (newPosting: AppJobPosting) => {
@@ -620,7 +640,7 @@ export default function EmployerPage() {
 
     if (!firestore) {
       setJobPostings(prev => [newPosting, ...prev].sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis()));
-      toast({ title: "Demo Mode", description: "Job posting saved in session. It won't persist without a database connection."});
+      toast({ title: "Demo Mode", description: "Job posting saved in session. It won't persist."});
       return;
     }
     
@@ -659,26 +679,6 @@ export default function EmployerPage() {
     }
   };
   
-  const handleJobUpdate = async (jobId: string, updates: Partial<Pick<AppJobPosting, 'status' | 'expiresAt'>>) => {
-      const originalPostings = [...jobPostings];
-      setJobPostings(prev => prev.map(job => job.id === jobId ? { ...job, ...updates } : job));
-
-      if (!firestore || jobId.startsWith('new-')) {
-        toast({ title: "Demo Mode", description: "Status updated for this session only."});
-        return;
-      }
-      
-      try {
-        const docRef = doc(firestore, "jobPostings", jobId);
-        await updateDoc(docRef, updates);
-        toast({ title: "Job Updated", description: "The job posting status has been changed." });
-      } catch (error) {
-        console.error("Error updating job in Firestore:", error);
-        toast({ variant: 'destructive', title: "Update Failed", description: "Could not update the job posting." });
-        setJobPostings(originalPostings);
-      }
-  }
-  
   return (
     <div className="container mx-auto max-w-7xl py-8 px-4">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -709,3 +709,5 @@ export default function EmployerPage() {
     </div>
   );
 }
+
+    
