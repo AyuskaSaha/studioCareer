@@ -8,14 +8,18 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, Lightbulb, Search, Briefcase, GraduationCap, User } from 'lucide-react';
+import { Loader2, Sparkles, Lightbulb, Search, Briefcase, GraduationCap, User, Save } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { useToast } from '@/hooks/use-toast';
 
 import { analyzeResume, type AnalyzeResumeOutput } from '@/ai/ai-resume-insights';
 import { suggestJobs, type SuggestJobsOutput } from '@/ai/flows/ai-job-suggestion';
 import { searchJobs, type SearchJobsOutput } from '@/ai/flows/ai-job-search';
+import { useFirebase } from '@/firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 type ResumeData = {
   personalInfo: {
@@ -162,8 +166,11 @@ function ResumeAnalysisDisplay({ analysis }: { analysis: AnalyzeResumeOutput | n
 function ResumeBuilder() {
   const [resumeData, setResumeData] = useState<ResumeData>(initialResumeData);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [analysis, setAnalysis] = useState<AnalyzeResumeOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+  const { firestore, user } = useFirebase();
 
   const handlePersonalInfoChange = (field: keyof ResumeData['personalInfo'], value: string) => {
     setResumeData(prev => ({ ...prev, personalInfo: { ...prev.personalInfo, [field]: value }}));
@@ -184,6 +191,43 @@ function ResumeBuilder() {
     setLoading(false);
   };
   
+  const handleSaveResume = async () => {
+    if (!firestore || !user) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "You must be logged in to save a resume.",
+      });
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const resumeText = resumeToText(resumeData);
+      const resumeId = user.uid; // Use user's UID as the document ID for simplicity
+      const docRef = doc(firestore, "resumes", resumeId);
+      const resumePayload = {
+        id: resumeId,
+        userProfileId: user.uid,
+        title: `${resumeData.personalInfo.name}'s Resume`,
+        content: JSON.stringify(resumeData),
+        resumeText: resumeText,
+      };
+
+      setDocumentNonBlocking(docRef, resumePayload, { merge: true });
+
+      toast({
+        title: "Resume Saved",
+        description: "Your resume has been saved successfully.",
+      });
+    } catch (e: any) {
+      console.error(e);
+      setError(e.message || "Failed to save resume. Please try again.");
+    }
+    setSaving(false);
+  };
+
   return (
     <div className="grid lg:grid-cols-2 gap-8 items-start">
       <Card>
@@ -207,16 +251,20 @@ function ResumeBuilder() {
           
           <Separator />
 
-          <div className="pt-2">
+          <div className="pt-2 flex flex-wrap gap-2">
+            <Button onClick={handleSaveResume} disabled={saving || !user}>
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save Resume
+            </Button>
             <Button onClick={handleAnalyzeResume} disabled={loading}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-              Analyze Resume with AI
+              Analyze Resume
             </Button>
+          </div>
             {loading && <p className="text-sm text-muted-foreground animate-pulse mt-2">AI is thinking...</p>}
             {error && <p className="text-sm text-destructive mt-2">{error}</p>}
             
             <ResumeAnalysisDisplay analysis={analysis} />
-          </div>
 
         </CardContent>
       </Card>
@@ -402,21 +450,4 @@ export default function JobSeekerPage() {
           <TabsTrigger value="builder">Resume Builder</TabsTrigger>
           <TabsTrigger value="insights">AI Resume Insights</TabsTrigger>
           <TabsTrigger value="suggestions">AI Job Suggestions</TabsTrigger>
-          <TabsTrigger value="search">Job Search</TabsTrigger>
-        </TabsList>
-        <TabsContent value="builder" className="mt-4">
-          <ResumeBuilder />
-        </TabsContent>
-        <TabsContent value="insights" className="mt-4">
-          <ResumeInsights />
-        </TabsContent>
-        <TabsContent value="suggestions" className="mt-4">
-          <JobSuggestions />
-        </TabsContent>
-        <TabsContent value="search" className="mt-4">
-          <JobSearch />
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
+          <TabsTrigger value="search">Job Search</T

@@ -10,12 +10,10 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import { getAllResumesTool } from '@/ai/tools/resume-retrieval';
 
 const RankResumesInputSchema = z.object({
   jobDescription: z.string().describe('The job description for which to rank the resumes.'),
-  resumes: z.array(
-    z.string().describe('An array of resumes in plain text format.')
-  ).describe('The resumes to rank.'),
 });
 export type RankResumesInput = z.infer<typeof RankResumesInputSchema>;
 
@@ -36,18 +34,14 @@ const rankResumesPrompt = ai.definePrompt({
   name: 'rankResumesPrompt',
   input: {schema: RankResumesInputSchema},
   output: {schema: RankResumesOutputSchema},
-  prompt: `You are an expert resume ranker for employers. You will receive a job description and an array of resumes.
-
-You will rank the resumes from 1 to 10 (1 being the best) based on how well they match the job description.  You must rank ALL resumes provided. Provide a reason for each ranking.
+  tools: [getAllResumesTool],
+  prompt: `You are an expert resume ranker for employers. You will be given a job description.
+Your task is to use the getAllResumes tool to fetch all available candidate resumes.
+Then, you will rank the top 10 resumes from best to worst based on how well they match the job description.
 
 Job Description: {{{jobDescription}}}
 
-Resumes:
-{{#each resumes}}
-- {{{this}}}
-{{/each}}
-
-Output the results as a JSON array of ranked resumes with reasons.
+Output the results as a JSON array of the top 10 ranked resumes with reasons.
 `,
 });
 

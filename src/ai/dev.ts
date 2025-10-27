@@ -7,3 +7,4 @@ import '@/ai/flows/resume-shortcoming-analysis.ts';
 import '@/ai/flows/ai-job-posting-generator.ts';
 import '@/ai/flows/ai-job-suggestion.ts';
 import '@/ai/flows/ai-job-search.ts';
+import '@/ai/tools/resume

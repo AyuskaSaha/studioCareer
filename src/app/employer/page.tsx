@@ -1,19 +1,21 @@
 "use client";
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, UserCheck } from 'lucide-react';
+import { Loader2, Sparkles, UserCheck, Search } from 'lucide-react';
 
 import { generateJobPosting, type JobPostingOutput } from '@/ai/flows/ai-job-posting-generator';
 import { rankResumes, type RankResumesOutput } from '@/ai/flows/top-resume-ranking';
 import { analyzeResumeShortcomings, type AnalyzeResumeShortcomingsOutput } from '@/ai/flows/resume-shortcoming-analysis';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
+import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 function JobPostingGenerator() {
   const [loading, setLoading] = useState(false);
@@ -98,23 +100,30 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
     }
   }
 
+  if (!analysis && !loading && !error) {
+     return (
+        <div className="mt-4">
+          <Button variant="secondary" size="sm" onClick={handleAnalyze} disabled={loading}>
+            Analyze Shortcomings
+          </Button>
+       </div>
+     );
+  }
+
   return (
     <div className="mt-4 rounded-md border bg-card/50 p-4">
-      <Button variant="secondary" size="sm" onClick={handleAnalyze} disabled={loading}>
-        {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-        Analyze Shortcomings
-      </Button>
+      <h4 className="font-semibold mb-2">Gap Analysis</h4>
       {loading && <p className="text-sm text-muted-foreground mt-2 animate-pulse">Analyzing resume gaps...</p>}
       {error && <p className="text-sm text-destructive mt-2">{error}</p>}
       {analysis && (
-        <div className="mt-4 space-y-4">
+        <div className="mt-2 space-y-4">
           <div className="space-y-2">
-            <h4 className="font-semibold">Overall Assessment</h4>
+            <h5 className="font-medium text-sm">Overall Assessment</h5>
             <p className="text-sm text-muted-foreground">{analysis.overallAssessment}</p>
           </div>
            {analysis.shortcomings.length > 0 && (
              <div className="space-y-2">
-              <h4 className="font-semibold">Identified Shortcomings</h4>
+              <h5 className="font-medium text-sm">Identified Shortcomings</h5>
                <Accordion type="single" collapsible className="w-full">
                 {analysis.shortcomings.map((item, index) => (
                   <AccordionItem value={`item-${index}`} key={index}>
@@ -142,35 +151,24 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
 function ResumeRanker() {
   const [loading, setLoading] = useState(false);
   const [jobDescription, setJobDescription] = useState('');
-  const [resumes, setResumes] = useState(['', '', '']);
   const [rankedResumes, setRankedResumes] = useState<RankResumesOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const handleResumeChange = (index: number, value: string) => {
-    const newResumes = [...resumes];
-    newResumes[index] = value;
-    setResumes(newResumes);
-  };
-  
-  const addResumeField = () => {
-    setResumes([...resumes, '']);
-  };
+  const rankingImage = PlaceHolderImages.find(img => img.id === 'resume-ranking');
 
   const handleRank = async () => {
     setLoading(true);
     setError(null);
     setRankedResumes(null);
     try {
-      const nonEmptyResumes = resumes.filter(r => r.trim() !== '');
-      if (nonEmptyResumes.length === 0) {
-        throw new Error("Please provide at least one resume.");
+      if (!jobDescription.trim()) {
+        throw new Error("Please provide a job description.");
       }
-      const result = await rankResumes({ jobDescription, resumes: nonEmptyResumes });
+      const result = await rankResumes({ jobDescription });
       const sortedResumes = result.sort((a, b) => a.rank - b.rank);
       setRankedResumes(sortedResumes);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      setError("Failed to rank resumes. Please check your inputs and try again.");
+      setError(e.message || "Failed to rank resumes. Please check your inputs and try again.");
     }
     setLoading(false);
   };
@@ -179,39 +177,48 @@ function ResumeRanker() {
     <Card>
       <CardHeader>
         <CardTitle className="font-headline">Top Resume Ranker</CardTitle>
-        <CardDescription>Paste a job description and resumes to see AI-powered rankings.</CardDescription>
+        <CardDescription>Paste a job description to automatically find and rank the top 10 candidates from our talent pool.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="job-desc-ranker">Job Description</Label>
-          <Textarea id="job-desc-ranker" placeholder="Paste the full job description here" className="min-h-[150px]" value={jobDescription} onChange={e => setJobDescription(e.target.value)} />
+          <Textarea id="job-desc-ranker" placeholder="Paste the full job description here to start the ranking process..." className="min-h-[200px]" value={jobDescription} onChange={e => setJobDescription(e.target.value)} />
         </div>
-        <div className="space-y-2">
-          <Label>Resumes</Label>
-          <div className="space-y-4">
-            {resumes.map((resume, index) => (
-              <Textarea key={index} placeholder={`Paste Resume #${index + 1} text here...`} className="min-h-[120px]" value={resume} onChange={e => handleResumeChange(index, e.target.value)} />
-            ))}
-          </div>
-          <Button variant="outline" size="sm" className="mt-2" onClick={addResumeField}>Add another resume</Button>
-        </div>
-        <Button onClick={handleRank} disabled={loading || !jobDescription || resumes.every(r => r.trim() === '')}>
-          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserCheck className="mr-2 h-4 w-4" />}
-          Rank Resumes
+
+        <Button onClick={handleRank} disabled={loading || !jobDescription}>
+          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+          Find & Rank Top Candidates
         </Button>
-        {loading && <p className="text-sm text-muted-foreground animate-pulse">Ranking resumes, please wait...</p>}
+
+        {loading && <p className="text-sm text-muted-foreground animate-pulse">Searching and ranking candidates, this may take a moment...</p>}
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
+        
+        {!rankedResumes && !loading && !error && rankingImage && (
+          <div className="pt-8 text-center">
+             <div className="relative aspect-video max-w-lg mx-auto w-full overflow-hidden rounded-lg">
+                <Image src={rankingImage.imageUrl} alt={rankingImage.description} fill className="object-cover" data-ai-hint={rankingImage.imageHint}/>
+              </div>
+            <p className="mt-4 text-muted-foreground">Your top candidates will appear here.</p>
+          </div>
+        )}
+
         {rankedResumes && (
           <div className="space-y-4 pt-4">
-            <h3 className="text-lg font-semibold font-headline">Ranked Candidates</h3>
+            <h3 className="text-lg font-semibold font-headline">Top 10 Ranked Candidates</h3>
             <div className="space-y-4">
               {rankedResumes.map(item => (
                 <Card key={item.rank} className="p-4">
                   <div className="flex items-start gap-4">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg flex-shrink-0">{item.rank}</div>
                     <div className="flex-1">
-                      <h4 className="font-semibold">Reasoning</h4>
-                      <p className="text-sm text-muted-foreground">{item.reason}</p>
+                      <h4 className="font-semibold">Reasoning for Rank</h4>
+                      <p className="text-sm text-muted-foreground mb-2">{item.reason}</p>
+                      
+                      <div className="p-4 border rounded-md bg-muted/20">
+                        <h5 className="font-medium mb-2">Resume Snippet</h5>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap font-sans line-clamp-4">{item.resume}</p>
+                      </div>
+
                       <ShortcomingAnalysis resume={item.resume} jobDescription={jobDescription} />
                     </div>
                   </div>
