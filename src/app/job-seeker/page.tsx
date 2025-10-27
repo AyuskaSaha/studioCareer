@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,9 +16,8 @@ import { useToast } from '@/hooks/use-toast';
 
 import { analyzeResume, type AnalyzeResumeOutput } from '@/ai/ai-resume-insights';
 import { suggestJobs, type SuggestJobsOutput } from '@/ai/flows/ai-job-suggestion';
-import { searchJobs, type SearchJobsOutput } from '@/ai/flows/ai-job-search';
-import { useFirebase } from '@/firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
+import { doc, setDoc, collection, query, where } from 'firebase/firestore';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 type ResumeData = {
@@ -376,60 +375,62 @@ function JobSuggestions() {
 }
 
 function JobSearch() {
-  const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<SearchJobsOutput | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [queryText, setQueryText] = useState('');
+  const [submittedQuery, setSubmittedQuery] = useState('');
+  const { firestore } = useFirebase();
 
-  const handleSearch = async () => {
-    setLoading(true);
-    setError(null);
-    setResults(null);
-    try {
-      const searchResult = await searchJobs({ query });
-      setResults(searchResult);
-    } catch (e) {
-      console.error(e);
-      setError("Search failed. Please try again.");
-    }
-    setLoading(false);
+  const jobsQuery = useMemoFirebase(() => {
+    if (!firestore || !submittedQuery) return null;
+    return query(
+      collection(firestore, 'jobPostings'),
+      where('status', '==', 'active'),
+      where('jobTitle', '>=', submittedQuery),
+      where('jobTitle', '<=', submittedQuery + '\uf8ff')
+    );
+  }, [firestore, submittedQuery]);
+
+  const { data: results, isLoading, error } = useCollection<{jobTitle: string; companyName: string; jobPostingText: string; location: string}>(jobsQuery);
+  
+  const handleSearch = () => {
+    setSubmittedQuery(queryText);
   };
 
   return (
      <Card className="max-w-4xl mx-auto">
       <CardHeader>
-        <CardTitle className="font-headline">AI Job Search</CardTitle>
-        <CardDescription>Search for job openings using AI.</CardDescription>
+        <CardTitle className="font-headline">Job Search</CardTitle>
+        <CardDescription>Search for job openings from our employer network.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex gap-2">
           <Input 
-            placeholder="Search by keywords, e.g., 'frontend developer remote'"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by job title, e.g., 'Senior Frontend Developer'"
+            value={queryText}
+            onChange={(e) => setQueryText(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           />
-          <Button onClick={handleSearch} disabled={loading || !query}>
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+          <Button onClick={handleSearch} disabled={isLoading || !queryText}>
+            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
             Search
           </Button>
         </div>
-        {loading && <p className="text-sm text-muted-foreground animate-pulse">AI is searching for jobs...</p>}
-        {error && <p className="text-sm text-destructive mt-2">{error}</p>}
-        {results && (
-          <div className="pt-4 space-y-4">
-            {results.length === 0 ? (
-              <p>No jobs found for your query.</p>
+        {isLoading && <p className="text-sm text-muted-foreground animate-pulse">Searching for jobs...</p>}
+        {error && <p className="text-sm text-destructive mt-2">Search failed. Please check your connection or try again.</p>}
+        
+        {submittedQuery && !isLoading && (
+           <div className="pt-4 space-y-4">
+            {results && results.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">No jobs found for "{submittedQuery}". Try another search.</p>
             ) : (
-              results.map((job, i) => (
+              results?.map((job, i) => (
                 <Card key={i} className="flex flex-col sm:flex-row justify-between sm:items-center p-4 gap-4">
                   <div className="flex-1">
-                    <h4 className="font-semibold">{job.title}</h4>
-                    <p className="text-sm text-muted-foreground">{job.company} - {job.location}</p>
-                    <p className="text-sm mt-2">{job.description}</p>
+                    <h4 className="font-semibold">{job.jobTitle}</h4>
+                    <p className="text-sm text-muted-foreground">{job.companyName} - {job.location}</p>
+                    <p className="text-sm mt-2 line-clamp-2">{job.jobPostingText}</p>
                   </div>
                   <Button asChild>
-                    <Link href={job.applyUrl} target="_blank" rel="noopener noreferrer">Apply</Link>
+                    <Link href="#" target="_blank" rel="noopener noreferrer">Apply</Link>
                   </Button>
                 </Card>
               ))
