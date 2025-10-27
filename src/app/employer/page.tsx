@@ -77,7 +77,6 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) 
     }
 
     try {
-      // Use a placeholder UID if user is not logged in.
       const userId = user ? user.uid : 'anonymous-user';
       const input: JobPostingInput = {
         ...formData as Omit<JobPostingInput, 'userProfileId' | 'refinement' | 'previousPosting'>,
@@ -85,13 +84,12 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) 
         ...(isRefinement && { refinement, previousPosting: generatedPosting })
       };
       
-      const stream = await generateJobPosting(input);
-      for await (const chunk of stream) {
-        setGeneratedPosting(prev => prev + chunk);
-      }
-    } catch (e) {
+      const result = await generateJobPosting(input);
+      setGeneratedPosting(result);
+
+    } catch (e: any) {
       console.error(e);
-      setError(`Failed to ${isRefinement ? 'refine' : 'generate'} job posting. Please try again.`);
+      setError(e.message || `Failed to ${isRefinement ? 'refine' : 'generate'} job posting. Please try again.`);
     }
     setLoading(false);
   };

@@ -84,16 +84,22 @@ const generateJobPostingFlow = ai.defineFlow(
     name: 'generateJobPostingFlow',
     inputSchema: JobPostingInputSchema,
     outputSchema: z.string(),
-    stream: true,
   },
-  async (input, streamingCallback) => {
-    const {stream} = await prompt(input, {streamingCallback});
-
-    let finalResult = '';
-    for await (const chunk of stream) {
-      finalResult += chunk;
-    }
+  async (input) => {
+    const datedInput = {
+        ...input,
+        description: `${input.description}\n\nPosted on: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+    };
     
-    return finalResult;
+    if (input.refinement && input.previousPosting) {
+        // Handle refinement
+        const {output} = await prompt(datedInput);
+        return output || '';
+
+    } else {
+        // Handle initial generation
+        const {output} = await prompt(datedInput);
+        return output || '';
+    }
   }
 );
