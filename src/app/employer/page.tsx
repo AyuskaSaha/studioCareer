@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, Wand2, Save, Users, Code, Trash2, CalendarIcon, FileText } from 'lucide-react';
+import { Loader2, Sparkles, Wand2, Save, Users, Code, Trash2, CalendarIcon, FileText, Check, X } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { generateJobPosting, type JobPostingInput } from '@/ai/flows/ai-job-posting-generator';
@@ -405,6 +405,7 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
   const [rankedResumes, setRankedResumes] = useState<RankResumesOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
   const rankingImage = PlaceHolderImages.find(img => img.id === 'resume-ranking');
+  const { toast } = useToast();
 
   const handleRank = async (job: AppJobPosting) => {
     if (job.status === 'inactive') return;
@@ -426,6 +427,13 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
       setError(e.message || "Failed to rank resumes. Please try again.");
       setLoading(false);
     }
+  };
+
+  const handleDecision = (candidateName: string, decision: 'Accepted' | 'Rejected') => {
+    toast({
+      title: `Candidate ${decision}`,
+      description: `${candidateName} has been ${decision.toLowerCase()}.`,
+    });
   };
 
   const handleDelete = (e: React.MouseEvent, jobId: string) => {
@@ -558,7 +566,9 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
           <div className="space-y-4 pt-4">
             <h3 className="text-lg font-semibold font-headline">Top Ranked Candidates for: <span className="text-primary">{selectedJob.jobTitle}</span></h3>
             <div className="space-y-4">
-              {rankedResumes.map(item => (
+              {rankedResumes.map(item => {
+                const candidateName = item.resume.match(/Name: (.*)/)?.[1] || 'Unknown Candidate';
+                return (
                 <Card key={item.rank} className="p-4">
                   <div className="flex items-start gap-4">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg flex-shrink-0">{item.rank}</div>
@@ -572,10 +582,21 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
                       </div>
 
                       <ShortcomingAnalysis resume={item.resume} jobDescription={selectedJob.jobPostingText} />
+
+                      <div className="flex gap-2 mt-4">
+                        <Button size="sm" onClick={() => handleDecision(candidateName, 'Accepted')} className="bg-green-600 hover:bg-green-700">
+                          <Check className="mr-2 h-4 w-4" />
+                          Accept
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleDecision(candidateName, 'Rejected')}>
+                          <X className="mr-2 h-4 w-4" />
+                          Reject
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </Card>
-              ))}
+              )})}
             </div>
           </div>
         )}
