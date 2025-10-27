@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, UserCheck, Search, FileText, Briefcase, Wand2, Save, Users, Code, Trash2, CalendarIcon } from 'lucide-react';
+import { Loader2, Sparkles, Wand2, Save, Users, Code, Trash2, CalendarIcon, FileText } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { generateJobPosting, type JobPostingInput } from '@/ai/flows/ai-job-posting-generator';
@@ -18,11 +18,10 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Badge } from '@/components/ui/badge';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, orderBy, where, Timestamp, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, orderBy, where, Timestamp, serverTimestamp, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { addDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
@@ -31,16 +30,19 @@ import { Switch } from '@/components/ui/switch';
 
 type AppJobPosting = {
   id: string;
-  title: string;
+  userProfileId: string;
+  jobTitle: string;
+  companyName: string;
   description: string;
-  icon: JSX.Element;
-  jobDescription: string;
+  jobPostingText: string;
   status: 'active' | 'inactive';
   expiresAt?: Date | null;
+  createdAt: Timestamp;
 };
 
 type FirestoreJobPosting = {
   id: string;
+  userProfileId: string;
   jobTitle: string;
   companyName: string;
   jobPostingText: string;
@@ -49,7 +51,7 @@ type FirestoreJobPosting = {
   expiresAt?: Timestamp;
 }
 
-function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) => void }) {
+function JobPostingGenerator({ onJobSaved }: { onJobSaved: () => void }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<Partial<Omit<JobPostingInput, 'userProfileId'>>>({ jobType: 'Full-time' });
@@ -108,16 +110,6 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) 
       return;
     }
     
-    const newJob: AppJobPosting = {
-      id: `new-${Date.now()}`,
-      title: formData.jobTitle || 'Untitled Job',
-      description: formData.description || 'No description provided.',
-      icon: <Briefcase className="h-8 w-8" />,
-      jobDescription: generatedPosting,
-      status: 'active',
-    };
-    onJobSaved(newJob);
-
     setSaving(true);
     if (user && firestore) {
       setError(null);
@@ -134,9 +126,11 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) 
         status: 'active'
       };
 
-      addDocumentNonBlocking(jobPostingsCol, docData);
+      addDocumentNonBlocking(jobPostingsCol, docData).then(() => {
+        onJobSaved();
+      });
     } else {
-       console.log("Job saved to session state. User not logged in for Firestore save.");
+       console.log("User not logged in for Firestore save.");
     }
     
     toast({
@@ -327,7 +321,7 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
   )
 }
 
-function ResumeRanker({ jobPostings, onSelectJob, onJobDelete, onJobUpdate }: { jobPostings: AppJobPosting[]; onSelectJob: (job: AppJobPosting) => void; onJobDelete: (jobId: string) => void; onJobUpdate: (jobId: string, updates: Partial<AppJobPosting>) => void; }) {
+function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: AppJobPosting[]; onJobDelete: (jobId: string) => void; onJobUpdate: (jobId: string, updates: Partial<Pick<AppJobPosting, 'status' | 'expiresAt'>>) => void; }) {
   const [loading, setLoading] = useState(false);
   const [selectedJob, setSelectedJob] = useState<AppJobPosting | null>(null);
   const [rankedResumes, setRankedResumes] = useState<RankResumesOutput | null>(null);
@@ -337,12 +331,11 @@ function ResumeRanker({ jobPostings, onSelectJob, onJobDelete, onJobUpdate }: { 
   const handleRank = async (job: AppJobPosting) => {
     if (job.status === 'inactive') return;
     setSelectedJob(job);
-    onSelectJob(job);
     setLoading(true);
     setError(null);
     setRankedResumes(null);
     try {
-      const result = await rankResumes({ jobDescription: job.jobDescription });
+      const result = await rankResumes({ jobDescription: job.jobPostingText });
       const sortedResumes = result.sort((a, b) => a.rank - b.rank);
       setRankedResumes(sortedResumes);
     } catch (e: any) {
@@ -364,6 +357,16 @@ function ResumeRanker({ jobPostings, onSelectJob, onJobDelete, onJobUpdate }: { 
   const handleDateChange = (jobId: string, date: Date | undefined) => {
       onJobUpdate(jobId, { expiresAt: date });
   };
+  
+  const getIconForJob = (title: string) => {
+    if (title.toLowerCase().includes('developer') || title.toLowerCase().includes('engineer')) {
+      return <Code className="h-8 w-8" />;
+    }
+    if (title.toLowerCase().includes('manager')) {
+      return <Users className="h-8 w-8" />;
+    }
+    return <Users className="h-8 w-8" />;
+  }
 
   return (
     <Card>
@@ -387,11 +390,11 @@ function ResumeRanker({ jobPostings, onSelectJob, onJobDelete, onJobUpdate }: { 
                 <CardHeader>
                   <div className="flex items-start gap-4">
                     <div className={cn("p-3 rounded-full", job.status === 'active' ? 'bg-primary/10 text-primary' : 'bg-muted-foreground/10 text-muted-foreground')}>
-                      {job.icon}
+                      {getIconForJob(job.jobTitle)}
                     </div>
                     <div>
-                      <CardTitle className="text-xl">{job.title}</CardTitle>
-                      <CardDescription className="mt-1">{job.description}</CardDescription>
+                      <CardTitle className="text-xl">{job.jobTitle}</CardTitle>
+                      <CardDescription className="mt-1 line-clamp-3">{job.description}</CardDescription>
                     </div>
                   </div>
                 </CardHeader>
@@ -470,7 +473,7 @@ function ResumeRanker({ jobPostings, onSelectJob, onJobDelete, onJobUpdate }: { 
 
         {rankedResumes && selectedJob && (
           <div className="space-y-4 pt-4">
-            <h3 className="text-lg font-semibold font-headline">Top Ranked Candidates for: <span className="text-primary">{selectedJob.title}</span></h3>
+            <h3 className="text-lg font-semibold font-headline">Top Ranked Candidates for: <span className="text-primary">{selectedJob.jobTitle}</span></h3>
             <div className="space-y-4">
               {rankedResumes.map(item => (
                 <Card key={item.rank} className="p-4">
@@ -485,7 +488,7 @@ function ResumeRanker({ jobPostings, onSelectJob, onJobDelete, onJobUpdate }: { 
                         <p className="text-sm text-muted-foreground whitespace-pre-wrap font-sans line-clamp-4">{item.resume}</p>
                       </div>
 
-                      <ShortcomingAnalysis resume={item.resume} jobDescription={selectedJob.jobDescription} />
+                      <ShortcomingAnalysis resume={item.resume} jobDescription={selectedJob.jobPostingText} />
                     </div>
                   </div>
                 </Card>
@@ -498,64 +501,8 @@ function ResumeRanker({ jobPostings, onSelectJob, onJobDelete, onJobUpdate }: { 
   );
 }
 
-const demoFirestorePostings: FirestoreJobPosting[] = [
-    {
-      id: 'demo-1',
-      jobTitle: 'Senior Frontend Developer',
-      companyName: 'Starlight Solutions',
-      jobPostingText: `Posted on: ${new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toLocaleDateString()}\n\nStarlight Solutions is looking for a Senior Frontend Developer to join our innovative team...`,
-      createdAt: new Timestamp(Math.floor((Date.now() - 2 * 24 * 60 * 60 * 1000) / 1000), 0),
-      status: 'active',
-    },
-    {
-      id: 'demo-2',
-      jobTitle: 'UX/UI Designer',
-      companyName: 'Creative Minds Inc.',
-      jobPostingText: `Posted on: ${new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toLocaleDateString()}\n\nCreative Minds Inc. is seeking a talented UX/UI Designer to create amazing user experiences...`,
-      createdAt: new Timestamp(Math.floor((Date.now() - 10 * 24 * 60 * 60 * 1000) / 1000), 0),
-      status: 'inactive',
-    },
-  ];
-
-function PreviousPostings() {
-  const { firestore, user } = useFirebase();
-  const jobPostingsQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return query(
-      collection(firestore, 'jobPostings'),
-      where('userProfileId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
-  }, [firestore, user]);
-
-  const { data: jobPostings, isLoading } = useCollection<FirestoreJobPosting>(jobPostingsQuery);
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  if (!isClient) {
-    return <Card><CardHeader><CardTitle className="font-headline">Previous Job Postings</CardTitle><CardDescription>View and manage your previously generated job postings.</CardDescription></CardHeader><CardContent><Loader2 className="animate-spin" /></CardContent></Card>;
-  }
-  
-  // Show demo postings if user is not logged in or has no postings
-  const postingsToShow = (!user || (jobPostings && jobPostings.length === 0))
-    ? demoFirestorePostings
-    : (jobPostings || []);
-
-  const handleStatusUpdate = async (postingId: string, newStatus: 'active' | 'inactive') => {
-    if (!firestore || !user) return;
-    const docRef = doc(firestore, 'jobPostings', postingId);
-    await updateDoc(docRef, { status: newStatus });
-  }
-
-  const handleExpiresAtUpdate = async (postingId: string, newDate: Date | null) => {
-    if (!firestore || !user) return;
-    const docRef = doc(firestore, 'jobPostings', postingId);
-    await updateDoc(docRef, { expiresAt: newDate ? Timestamp.fromDate(newDate) : null });
-  }
-
+function PreviousPostings({ jobPostings, isLoading, onUpdate, onDelete }: { jobPostings: AppJobPosting[], isLoading: boolean, onUpdate: (id: string, updates: any) => void, onDelete: (id: string) => void }) {
+  const { user } = useFirebase();
 
   return (
     <Card>
@@ -565,15 +512,15 @@ function PreviousPostings() {
       </CardHeader>
       <CardContent className="space-y-4">
         {isLoading && <Loader2 className="animate-spin" />}
-        {!isLoading && postingsToShow.length === 0 && (
+        {!isLoading && jobPostings.length === 0 && (
           <div className="text-center text-muted-foreground py-12">
             <FileText className="mx-auto h-12 w-12" />
-            <p className="mt-4">You haven't generated any job postings yet.</p>
+            <p className="mt-4">{user ? "You haven't generated any job postings yet." : "Login to see your saved postings."}</p>
           </div>
         )}
-        {!isLoading && postingsToShow.length > 0 && (
+        {!isLoading && jobPostings.length > 0 && (
           <div className="space-y-4">
-            {postingsToShow.map((posting) => (
+            {jobPostings.map((posting) => (
               <Card key={posting.id} className="p-4">
                 <div className="flex flex-col sm:flex-row justify-between gap-4">
                   <div className="flex-1">
@@ -588,6 +535,9 @@ function PreviousPostings() {
                   </div>
                   <div className="flex items-center gap-2">
                      <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(posting.jobPostingText)}>Copy Text</Button>
+                      <Button variant="destructive" size="icon" onClick={() => onDelete(posting.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                   </div>
                 </div>
               </Card>
@@ -602,66 +552,122 @@ function PreviousPostings() {
 
 export default function EmployerPage() {
   const [activeTab, setActiveTab] = useState("ranker");
-  const [jobPostings, setJobPostings] = useState<AppJobPosting[]>([
+  const { firestore, user } = useFirebase();
+  
+  const jobPostingsQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return query(
+      collection(firestore, 'jobPostings'),
+      where('userProfileId', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
+  }, [firestore, user]);
+
+  const { data: firestorePostings, isLoading: isLoadingFirestore } = useCollection<FirestoreJobPosting>(jobPostingsQuery);
+  const { toast } = useToast();
+
+  const [jobPostings, setJobPostings] = useState<AppJobPosting[]>([]);
+  const [isClient, setIsClient] = useState(false);
+
+  const demoFirestorePostings: FirestoreJobPosting[] = [
     {
-      id: 'frontend-dev',
-      title: 'Senior Frontend Developer',
-      description: 'Seeking an experienced frontend developer to build modern, responsive web applications using React and Next.js. You will be responsible for leading frontend projects, mentoring junior developers, and collaborating with designers to create a seamless user experience.',
-      icon: <Code className="h-8 w-8" />,
-      jobDescription: 'Job Title: Senior Frontend Developer\nSkills: React, Next.js, TypeScript, Tailwind CSS, REST APIs\nExperience: 5+ years of professional frontend development experience, including leadership roles.',
+      id: 'demo-1',
+      userProfileId: 'demo-user',
+      jobTitle: 'Senior Frontend Developer',
+      companyName: 'Starlight Solutions',
+      jobPostingText: 'Seeking an experienced frontend developer to build modern, responsive web applications using React and Next.js. You will be responsible for leading frontend projects, mentoring junior developers, and collaborating with designers to create a seamless user experience. \nSkills: React, Next.js, TypeScript, Tailwind CSS, REST APIs\nExperience: 5+ years of professional frontend development experience, including leadership roles.',
+      createdAt: new Timestamp(Math.floor((Date.now() - 2 * 24 * 60 * 60 * 1000) / 1000), 0),
       status: 'active',
-      expiresAt: null
     },
     {
-      id: 'pm',
-      title: 'Agile Project Manager',
-      description: 'We are looking for a certified Project Manager to lead our software development teams. You will be responsible for planning sprints, managing timelines, and ensuring project goals are met. Strong communication and leadership skills are a must.',
-      icon: <Users className="h-8 w-8" />,
-      jobDescription: 'Job Title: Agile Project Manager\nSkills: Agile, Scrum, JIRA, Confluence, Risk Management\nExperience: 3+ years in a project management role in a tech company. Scrum Master certification is a plus.',
-      status: 'active',
-      expiresAt: null
-    }
-  ]);
-  const [isClient, setIsClient] = useState(false);
+      id: 'demo-2',
+      userProfileId: 'demo-user',
+      jobTitle: 'Agile Project Manager',
+      companyName: 'Creative Minds Inc.',
+      jobPostingText: 'We are looking for a certified Project Manager to lead our software development teams. You will be responsible for planning sprints, managing timelines, and ensuring project goals are met. Strong communication and leadership skills are a must.\nSkills: Agile, Scrum, JIRA, Confluence, Risk Management\nExperience: 3+ years in a project management role in a tech company. Scrum Master certification is a plus.',
+      createdAt: new Timestamp(Math.floor((Date.now() - 10 * 24 * 60 * 60 * 1000) / 1000), 0),
+      status: 'inactive',
+    },
+  ];
 
   useEffect(() => {
     setIsClient(true);
+    
+    const postingsToUse = (!user || !firestorePostings) ? demoFirestorePostings : firestorePostings;
+    
+    const appPostings = postingsToUse.map(p => ({
+      id: p.id,
+      userProfileId: p.userProfileId,
+      jobTitle: p.jobTitle,
+      companyName: p.companyName,
+      description: p.jobPostingText.split('\n')[0], // Simple description from first line
+      jobPostingText: p.jobPostingText,
+      status: p.status,
+      expiresAt: p.expiresAt ? p.expiresAt.toDate() : null,
+      createdAt: p.createdAt,
+    }));
+    
+    setJobPostings(appPostings);
+
     const interval = setInterval(() => {
-      setJobPostings(prevPostings =>
-        prevPostings.map(p => {
-          if (p.status === 'active' && p.expiresAt && new Date() > p.expiresAt) {
-            return { ...p, status: 'inactive' };
-          }
-          return p;
-        })
-      );
+      let changed = false;
+      const updatedPostings = jobPostings.map(p => {
+        if (p.status === 'active' && p.expiresAt && new Date() > p.expiresAt) {
+          changed = true;
+          handleJobUpdate(p.id, { status: 'inactive' });
+          return { ...p, status: 'inactive' };
+        }
+        return p;
+      });
+      if(changed) {
+        setJobPostings(updatedPostings);
+      }
     }, 60000); // Check every minute
 
     return () => clearInterval(interval);
-  }, []);
+  }, [firestorePostings, user]);
 
-  const handleJobSaved = (newJob: AppJobPosting) => {
-    setJobPostings(prev => [newJob, ...prev]);
-    // Switch to the ranker tab to show the new job
+
+  const handleJobSaved = () => {
+    // Re-fetching is handled by useCollection, so we just need to switch tabs
     setActiveTab('ranker');
   };
-  
-  const handleSelectJobInRanker = (job: AppJobPosting) => {
-     // This function is just to complete the loop, no state change needed here
-     // as the ranker handles its own internal selected job state.
-  }
 
-  const handleJobDelete = (jobId: string) => {
-    setJobPostings(prev => prev.filter(job => job.id !== jobId));
+  const handleJobDelete = async (jobId: string) => {
+    if (!firestore || !user) {
+      toast({ variant: 'destructive', title: "Error", description: "You must be logged in to delete postings."});
+      setJobPostings(prev => prev.filter(job => job.id !== jobId));
+      return;
+    }
+    const docRef = doc(firestore, "jobPostings", jobId);
+    deleteDocumentNonBlocking(docRef);
+    toast({ title: "Job Deleted", description: "The job posting has been removed." });
   };
   
-  const handleJobUpdate = (jobId: string, updates: Partial<AppJobPosting>) => {
-    setJobPostings(prev => prev.map(job => job.id === jobId ? {...job, ...updates} : job));
+  const handleJobUpdate = async (jobId: string, updates: Partial<Pick<AppJobPosting, 'status' | 'expiresAt'>>) => {
+     if (!firestore || !user) {
+      toast({ variant: 'destructive', title: "Error", description: "You must be logged in to update postings."});
+      
+      // Optimistically update local state for demo mode
+      setJobPostings(prev => prev.map(job => job.id === jobId ? {...job, ...updates} : job));
+      return;
+    }
+
+    const docRef = doc(firestore, 'jobPostings', jobId);
+    const firestoreUpdates: any = { ...updates };
+    if (updates.expiresAt !== undefined) {
+      firestoreUpdates.expiresAt = updates.expiresAt ? Timestamp.fromDate(updates.expiresAt) : null;
+    }
+    
+    await updateDoc(docRef, firestoreUpdates);
+    toast({ title: "Job Updated", description: "The job posting has been updated." });
   };
 
   if (!isClient) {
     return null; // or a loading skeleton
   }
+
+  const isLoading = !user ? false : isLoadingFirestore;
 
   return (
     <div className="container mx-auto max-w-5xl py-8 px-4">
@@ -672,15 +678,17 @@ export default function EmployerPage() {
           <TabsTrigger value="previous">Previous Postings</TabsTrigger>
         </TabsList>
         <TabsContent value="ranker" className="mt-4">
-          <ResumeRanker jobPostings={jobPostings} onSelectJob={handleSelectJobInRanker} onJobDelete={handleJobDelete} onJobUpdate={handleJobUpdate}/>
+          <ResumeRanker jobPostings={jobPostings} onJobDelete={handleJobDelete} onJobUpdate={handleJobUpdate}/>
         </TabsContent>
         <TabsContent value="generator" className="mt-4">
           <JobPostingGenerator onJobSaved={handleJobSaved} />
         </TabsContent>
         <TabsContent value="previous" className="mt-4">
-          <PreviousPostings />
+          <PreviousPostings jobPostings={jobPostings} isLoading={isLoading} onUpdate={handleJobUpdate} onDelete={handleJobDelete}/>
         </TabsContent>
       </Tabs>
     </div>
   );
 }
+
+    
