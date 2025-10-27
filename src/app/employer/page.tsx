@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -75,6 +75,11 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<AnalyzeResumeShortcomingsOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const handleAnalyze = async () => {
     setLoading(true);
@@ -98,6 +103,10 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
       case 'low': return <Badge variant="secondary" className="bg-green-400 text-black hover:bg-green-400/80">Low</Badge>;
       default: return <Badge variant="outline">{severity}</Badge>;
     }
+  }
+
+  if (!isClient) {
+    return null; // or a placeholder/spinner
   }
 
   if (!analysis && !loading && !error) {

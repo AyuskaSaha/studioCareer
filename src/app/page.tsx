@@ -1,3 +1,5 @@
+"use client";
+
 import Link from 'next/link';
 import Image from 'next/image';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -5,10 +7,16 @@ import { Button } from '@/components/ui/button';
 import { ArrowRight, User, Briefcase } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
+import { useEffect, useState } from 'react';
 
 export default function Home() {
   const seekerImage = PlaceHolderImages.find(img => img.id === 'job-seeker-card');
   const employerImage = PlaceHolderImages.find(img => img.id === 'employer-card');
+  const [year, setYear] = useState(new Date().getFullYear());
+
+  useEffect(() => {
+    setYear(new Date().getFullYear());
+  }, []);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -97,7 +105,7 @@ export default function Home() {
 
       <footer className="border-t">
         <div className="container flex h-14 items-center justify-center text-sm text-foreground/60">
-          <p>&copy; {new Date().getFullYear()} CareerAI. All rights reserved.</p>
+          <p>&copy; {year} CareerAI. All rights reserved.</p>
         </div>
       </footer>
     </div>
