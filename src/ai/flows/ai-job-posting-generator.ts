@@ -9,6 +9,9 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import { addDocumentNonBlocking } from '@/firebase';
+import { collection, serverTimestamp } from 'firebase/firestore';
+import { initializeFirebase } from '@/firebase';
 
 const JobPostingInputSchema = z.object({
   jobTitle: z.string().describe('The title of the job.'),
@@ -20,12 +23,13 @@ const JobPostingInputSchema = z.object({
   responsibilities: z.string().describe('A list or description of the job responsibilities.'),
   mustHaveSkills: z.string().describe('A comma-separated list of essential skills.'),
   niceToHaveSkills: z.string().optional().describe('A comma-separated list of skills that are nice to have.'),
+  userProfileId: z.string().describe('The ID of the user creating the job posting.'),
 });
 
 export type JobPostingInput = z.infer<typeof JobPostingInputSchema>;
 
 const JobPostingOutputSchema = z.object({
-  jobPosting: z.string().describe('The generated job posting text, formatted professionally with a timestamp.'),
+  jobPostingText: z.string().describe('The generated job posting text, formatted professionally with a timestamp.'),
 });
 
 export type JobPostingOutput = z.infer<typeof JobPostingOutputSchema>;
@@ -72,7 +76,24 @@ const generateJobPostingFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await prompt(input);
-    const datedPosting = `Posted on: ${new Date().toLocaleDateString()}\n\n${output!.jobPosting}`;
-    return { jobPosting: datedPosting };
+
+    const {firestore} = initializeFirebase();
+    const jobPostingsCol = collection(firestore, 'jobPostings');
+
+    const jobPostingData = {
+        userProfileId: input.userProfileId,
+        jobTitle: input.jobTitle,
+        companyName: input.companyName,
+        location: input.location,
+        salaryRange: input.salaryRange,
+        jobType: input.jobType,
+        jobPostingText: `Posted on: ${new Date().toLocaleDateString()}\n\n${output!.jobPostingText}`,
+        createdAt: serverTimestamp(),
+        status: 'active'
+    };
+    
+    addDocumentNonBlocking(jobPostingsCol, jobPostingData);
+
+    return { jobPostingText: jobPostingData.jobPostingText };
   }
 );

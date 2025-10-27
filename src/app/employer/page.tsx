@@ -8,21 +8,37 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, UserCheck, Search } from 'lucide-react';
+import { Loader2, Sparkles, UserCheck, Search, FileText, Briefcase } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-import { generateJobPosting, type JobPostingInput, type JobPostingOutput } from '@/ai/flows/ai-job-posting-generator';
+import { generateJobPosting, type JobPostingInput } from '@/ai/flows/ai-job-posting-generator';
 import { rankResumes, type RankResumesOutput } from '@/ai/flows/top-resume-ranking';
 import { analyzeResumeShortcomings, type AnalyzeResumeShortcomingsOutput } from '@/ai/flows/resume-shortcoming-analysis';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
+import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, query, orderBy, where, Timestamp } from 'firebase/firestore';
+import { formatDistanceToNow } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+type JobPosting = {
+  id: string;
+  jobTitle: string;
+  companyName: string;
+  jobPostingText: string;
+  createdAt: Timestamp;
+  status: 'active' | 'inactive';
+}
 
 function JobPostingGenerator() {
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState<Partial<JobPostingInput>>({ jobType: 'Full-time' });
-  const [jobPosting, setJobPosting] = useState<JobPostingOutput | null>(null);
+  const [formData, setFormData] = useState<Partial<Omit<JobPostingInput, 'userProfileId'>>>({ jobType: 'Full-time' });
+  const [generatedPosting, setGeneratedPosting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { user, auth } = useFirebase();
+  const { toast } = useToast();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { id, value } = e.target;
@@ -35,20 +51,24 @@ function JobPostingGenerator() {
   
   const canGenerate = () => {
     const { jobTitle, companyName, location, description, responsibilities, mustHaveSkills } = formData;
-    return jobTitle && companyName && location && description && responsibilities && mustHaveSkills;
+    return jobTitle && companyName && location && description && responsibilities && mustHaveSkills && user;
   };
 
   const handleGenerate = async () => {
     if (!canGenerate()) {
-      setError("Please fill out all required fields.");
+      setError("Please fill out all required fields and ensure you are logged in.");
       return;
     }
     setLoading(true);
     setError(null);
-    setJobPosting(null);
+    setGeneratedPosting(null);
     try {
-      const result = await generateJobPosting(formData as JobPostingInput);
-      setJobPosting(result);
+      const result = await generateJobPosting({ ...formData as Omit<JobPostingInput, 'userProfileId'>, userProfileId: user!.uid });
+      setGeneratedPosting(result.jobPostingText);
+      toast({
+        title: "Job Posting Generated!",
+        description: "Your new job posting has been created and saved.",
+      });
     } catch (e) {
       console.error(e);
       setError("Failed to generate job posting. Please try again.");
@@ -63,26 +83,36 @@ function JobPostingGenerator() {
         <CardDescription>Fill in the details below and let our AI craft the perfect job posting for you.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {!user && (
+          <Alert>
+            <Briefcase className="h-4 w-4" />
+            <AlertTitle>Please Log In</AlertTitle>
+            <AlertDescription>
+              You need to be logged in to generate and save job postings.
+              <Button variant="link" className="p-0 h-auto ml-1" onClick={() => auth && auth.signInAnonymously()}>Log in anonymously</Button>
+            </AlertDescription>
+          </Alert>
+        )}
         <div className="grid md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="jobTitle">Job Title</Label>
-            <Input id="jobTitle" placeholder="e.g., Senior Frontend Developer" value={formData.jobTitle || ''} onChange={handleInputChange} />
+            <Input id="jobTitle" placeholder="e.g., Senior Frontend Developer" value={formData.jobTitle || ''} onChange={handleInputChange} disabled={!user}/>
           </div>
           <div className="space-y-2">
             <Label htmlFor="companyName">Company Name</Label>
-            <Input id="companyName" placeholder="e.g., Acme Inc." value={formData.companyName || ''} onChange={handleInputChange} />
+            <Input id="companyName" placeholder="e.g., Acme Inc." value={formData.companyName || ''} onChange={handleInputChange} disabled={!user}/>
           </div>
           <div className="space-y-2">
             <Label htmlFor="location">Location</Label>
-            <Input id="location" placeholder="e.g., San Francisco, CA or Remote" value={formData.location || ''} onChange={handleInputChange} />
+            <Input id="location" placeholder="e.g., San Francisco, CA or Remote" value={formData.location || ''} onChange={handleInputChange} disabled={!user}/>
           </div>
           <div className="space-y-2">
             <Label htmlFor="salaryRange">Salary Range (Optional)</Label>
-            <Input id="salaryRange" placeholder="e.g., $120,000 - $150,000" value={formData.salaryRange || ''} onChange={handleInputChange} />
+            <Input id="salaryRange" placeholder="e.g., $120,000 - $150,000" value={formData.salaryRange || ''} onChange={handleInputChange} disabled={!user}/>
           </div>
           <div className="space-y-2">
             <Label htmlFor="jobType">Job Type</Label>
-             <Select value={formData.jobType} onValueChange={handleSelectChange}>
+             <Select value={formData.jobType} onValueChange={handleSelectChange} disabled={!user}>
               <SelectTrigger id="jobType">
                 <SelectValue placeholder="Select job type" />
               </SelectTrigger>
@@ -97,34 +127,34 @@ function JobPostingGenerator() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="description">Company & Role Description</Label>
-          <Textarea id="description" placeholder="Describe your company's mission, culture, and the role's purpose." className="min-h-[100px]" value={formData.description || ''} onChange={handleInputChange} />
+          <Textarea id="description" placeholder="Describe your company's mission, culture, and the role's purpose." className="min-h-[100px]" value={formData.description || ''} onChange={handleInputChange} disabled={!user}/>
         </div>
         <div className="space-y-2">
           <Label htmlFor="responsibilities">Responsibilities</Label>
-          <Textarea id="responsibilities" placeholder="List the key responsibilities, e.g., - Develop and maintain web applications..." className="min-h-[120px]" value={formData.responsibilities || ''} onChange={handleInputChange} />
+          <Textarea id="responsibilities" placeholder="List the key responsibilities, e.g., - Develop and maintain web applications..." className="min-h-[120px]" value={formData.responsibilities || ''} onChange={handleInputChange} disabled={!user}/>
         </div>
         <div className="space-y-2">
           <Label htmlFor="mustHaveSkills">Must-Have Skills</Label>
-          <Input id="mustHaveSkills" placeholder="Comma-separated, e.g., React, TypeScript, CSS" value={formData.mustHaveSkills || ''} onChange={handleInputChange} />
+          <Input id="mustHaveSkills" placeholder="Comma-separated, e.g., React, TypeScript, CSS" value={formData.mustHaveSkills || ''} onChange={handleInputChange} disabled={!user}/>
         </div>
         <div className="space-y-2">
           <Label htmlFor="niceToHaveSkills">Nice-to-Have Skills (Optional)</Label>
-          <Input id="niceToHaveSkills" placeholder="Comma-separated, e.g., GraphQL, Docker, AWS" value={formData.niceToHaveSkills || ''} onChange={handleInputChange} />
+          <Input id="niceToHaveSkills" placeholder="Comma-separated, e.g., GraphQL, Docker, AWS" value={formData.niceToHaveSkills || ''} onChange={handleInputChange} disabled={!user}/>
         </div>
         
         <Button onClick={handleGenerate} disabled={loading || !canGenerate()}>
           {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-          Generate Posting
+          Generate & Save Posting
         </Button>
         
         {loading && <p className="text-sm text-muted-foreground animate-pulse">AI is thinking...</p>}
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
         
-        {jobPosting && (
+        {generatedPosting && (
           <div className="space-y-2 pt-4">
             <Label className="font-semibold text-lg">Generated Job Posting</Label>
-            <Textarea readOnly value={jobPosting.jobPosting} className="min-h-[400px] bg-muted/50 font-sans" />
-            <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(jobPosting.jobPosting)}>Copy Text</Button>
+            <Textarea readOnly value={generatedPosting} className="min-h-[400px] bg-muted/50 font-sans" />
+            <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(generatedPosting)}>Copy Text</Button>
           </div>
         )}
       </CardContent>
@@ -167,7 +197,7 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
   }
 
   if (!isClient) {
-    return null; // or a placeholder/spinner
+    return null;
   }
 
   if (!analysis && !loading && !error) {
@@ -302,19 +332,96 @@ function ResumeRanker() {
   );
 }
 
+const demoPostings: JobPosting[] = [
+    {
+      id: 'demo-1',
+      jobTitle: 'Senior Frontend Developer',
+      companyName: 'Starlight Solutions',
+      jobPostingText: `Posted on: ${new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toLocaleDateString()}\n\nStarlight Solutions is looking for a Senior Frontend Developer to join our innovative team...`,
+      createdAt: new Timestamp(Math.floor((Date.now() - 2 * 24 * 60 * 60 * 1000) / 1000), 0),
+      status: 'active',
+    },
+    {
+      id: 'demo-2',
+      jobTitle: 'UX/UI Designer',
+      companyName: 'Creative Minds Inc.',
+      jobPostingText: `Posted on: ${new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toLocaleDateString()}\n\nCreative Minds Inc. is seeking a talented UX/UI Designer to create amazing user experiences...`,
+      createdAt: new Timestamp(Math.floor((Date.now() - 10 * 24 * 60 * 60 * 1000) / 1000), 0),
+      status: 'inactive',
+    },
+  ];
+
+function PreviousPostings() {
+  const { firestore, user } = useFirebase();
+  const jobPostingsQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return query(
+      collection(firestore, 'jobPostings'),
+      where('userProfileId', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
+  }, [firestore, user]);
+
+  const { data: jobPostings, isLoading } = useCollection<JobPosting>(jobPostingsQuery);
+  const allPostings = [...demoPostings, ...(jobPostings || [])];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="font-headline">Previous Job Postings</CardTitle>
+        <CardDescription>View and manage your previously generated job postings.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading && <Loader2 className="animate-spin" />}
+        {!isLoading && allPostings.length === 0 && (
+          <div className="text-center text-muted-foreground py-12">
+            <FileText className="mx-auto h-12 w-12" />
+            <p className="mt-4">You haven't generated any job postings yet.</p>
+          </div>
+        )}
+        <div className="space-y-4">
+          {allPostings.map((posting) => (
+            <Card key={posting.id} className="p-4">
+              <div className="flex flex-col sm:flex-row justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-4 mb-2">
+                     <h4 className="font-semibold text-lg">{posting.jobTitle}</h4>
+                     <Badge variant={posting.status === 'active' ? 'default' : 'secondary'}>{posting.status}</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    at {posting.companyName} &bull; {formatDistanceToNow(posting.createdAt.toDate(), { addSuffix: true })}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                   <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(posting.jobPostingText)}>Copy Text</Button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+
 export default function EmployerPage() {
   return (
     <div className="container mx-auto max-w-5xl py-8 px-4">
       <Tabs defaultValue="ranker" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="ranker">Resume Ranker</TabsTrigger>
           <TabsTrigger value="generator">Job Posting Generator</TabsTrigger>
+          <TabsTrigger value="previous">Previous Postings</TabsTrigger>
         </TabsList>
         <TabsContent value="ranker" className="mt-4">
           <ResumeRanker />
         </TabsContent>
         <TabsContent value="generator" className="mt-4">
           <JobPostingGenerator />
+        </TabsContent>
+        <TabsContent value="previous" className="mt-4">
+          <PreviousPostings />
         </TabsContent>
       </Tabs>
     </div>

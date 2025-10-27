@@ -83,34 +83,54 @@
         },
         "userProfileId": {
           "type": "string",
-          "description": "Reference to UserProfile. (Relationship: UserProfile 1:N JobPosting). Represents the employer who created the job posting."
+          "description": "Reference to UserProfile. Represents the employer who created the job posting."
         },
-        "title": {
+        "jobTitle": {
           "type": "string",
           "description": "The title of the job posting."
         },
-        "description": {
-          "type": "string",
-          "description": "The description of the job posting."
-        },
-        "keywords": {
-          "type": "array",
-          "description": "Keywords associated with this job posting, to improve searchability.",
-          "items": {
-            "type": "string"
-          }
-        },
-        "company": {
+        "companyName": {
           "type": "string",
           "description": "The name of the company offering the job."
+        },
+        "location": {
+          "type": "string",
+          "description": "The location of the job."
+        },
+        "salaryRange": {
+          "type": "string",
+          "description": "The salary range for the position."
+        },
+        "jobType": {
+          "type": "string",
+          "description": "The type of employment (e.g., Full-time, Part-time)."
+        },
+        "jobPostingText": {
+          "type": "string",
+          "description": "The full, generated text of the job posting."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when the job posting was created."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "inactive"
+          ],
+          "description": "The current status of the job posting."
         }
       },
       "required": [
         "id",
         "userProfileId",
-        "title",
-        "description",
-        "company"
+        "jobTitle",
+        "companyName",
+        "jobPostingText",
+        "createdAt",
+        "status"
       ]
     },
     "Application": {
@@ -200,3 +220,9 @@
           "schema": {
             "$ref": "#/entities/Application"
           },
+          "description": "Stores job applications."
+        }
+      }
+    ]
+  }
+}
