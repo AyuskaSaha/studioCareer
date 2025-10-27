@@ -9,8 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Loader2, Sparkles, UserCheck, Search } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-import { generateJobPosting, type JobPostingOutput } from '@/ai/flows/ai-job-posting-generator';
+import { generateJobPosting, type JobPostingInput, type JobPostingOutput } from '@/ai/flows/ai-job-posting-generator';
 import { rankResumes, type RankResumesOutput } from '@/ai/flows/top-resume-ranking';
 import { analyzeResumeShortcomings, type AnalyzeResumeShortcomingsOutput } from '@/ai/flows/resume-shortcoming-analysis';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -19,17 +20,34 @@ import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 function JobPostingGenerator() {
   const [loading, setLoading] = useState(false);
-  const [keywords, setKeywords] = useState('');
-  const [details, setDetails] = useState('');
+  const [formData, setFormData] = useState<Partial<JobPostingInput>>({ jobType: 'Full-time' });
   const [jobPosting, setJobPosting] = useState<JobPostingOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { id, value } = e.target;
+    setFormData(prev => ({ ...prev, [id]: value }));
+  };
+
+  const handleSelectChange = (value: JobPostingInput['jobType']) => {
+    setFormData(prev => ({ ...prev, jobType: value }));
+  };
+  
+  const canGenerate = () => {
+    const { jobTitle, companyName, location, description, responsibilities, mustHaveSkills } = formData;
+    return jobTitle && companyName && location && description && responsibilities && mustHaveSkills;
+  };
+
   const handleGenerate = async () => {
+    if (!canGenerate()) {
+      setError("Please fill out all required fields.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setJobPosting(null);
     try {
-      const result = await generateJobPosting({ keywords, details });
+      const result = await generateJobPosting(formData as JobPostingInput);
       setJobPosting(result);
     } catch (e) {
       console.error(e);
@@ -42,27 +60,70 @@ function JobPostingGenerator() {
     <Card>
       <CardHeader>
         <CardTitle className="font-headline">AI Job Posting Generator</CardTitle>
-        <CardDescription>Provide keywords and details, and let AI craft the perfect job posting.</CardDescription>
+        <CardDescription>Fill in the details below and let our AI craft the perfect job posting for you.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="keywords">Keywords</Label>
-          <Input id="keywords" placeholder="e.g., React, TypeScript, Node.js, Agile" value={keywords} onChange={e => setKeywords(e.target.value)} />
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="jobTitle">Job Title</Label>
+            <Input id="jobTitle" placeholder="e.g., Senior Frontend Developer" value={formData.jobTitle || ''} onChange={handleInputChange} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="companyName">Company Name</Label>
+            <Input id="companyName" placeholder="e.g., Acme Inc." value={formData.companyName || ''} onChange={handleInputChange} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="location">Location</Label>
+            <Input id="location" placeholder="e.g., San Francisco, CA or Remote" value={formData.location || ''} onChange={handleInputChange} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="salaryRange">Salary Range (Optional)</Label>
+            <Input id="salaryRange" placeholder="e.g., $120,000 - $150,000" value={formData.salaryRange || ''} onChange={handleInputChange} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="jobType">Job Type</Label>
+             <Select value={formData.jobType} onValueChange={handleSelectChange}>
+              <SelectTrigger id="jobType">
+                <SelectValue placeholder="Select job type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Full-time">Full-time</SelectItem>
+                <SelectItem value="Part-time">Part-time</SelectItem>
+                <SelectItem value="Contract">Contract</SelectItem>
+                <SelectItem value="Internship">Internship</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="details">Job Details</Label>
-          <Textarea id="details" placeholder="Describe responsibilities, requirements, company culture, etc." className="min-h-[150px]" value={details} onChange={e => setDetails(e.target.value)} />
+          <Label htmlFor="description">Company & Role Description</Label>
+          <Textarea id="description" placeholder="Describe your company's mission, culture, and the role's purpose." className="min-h-[100px]" value={formData.description || ''} onChange={handleInputChange} />
         </div>
-        <Button onClick={handleGenerate} disabled={loading || !keywords || !details}>
+        <div className="space-y-2">
+          <Label htmlFor="responsibilities">Responsibilities</Label>
+          <Textarea id="responsibilities" placeholder="List the key responsibilities, e.g., - Develop and maintain web applications..." className="min-h-[120px]" value={formData.responsibilities || ''} onChange={handleInputChange} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="mustHaveSkills">Must-Have Skills</Label>
+          <Input id="mustHaveSkills" placeholder="Comma-separated, e.g., React, TypeScript, CSS" value={formData.mustHaveSkills || ''} onChange={handleInputChange} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="niceToHaveSkills">Nice-to-Have Skills (Optional)</Label>
+          <Input id="niceToHaveSkills" placeholder="Comma-separated, e.g., GraphQL, Docker, AWS" value={formData.niceToHaveSkills || ''} onChange={handleInputChange} />
+        </div>
+        
+        <Button onClick={handleGenerate} disabled={loading || !canGenerate()}>
           {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
           Generate Posting
         </Button>
+        
         {loading && <p className="text-sm text-muted-foreground animate-pulse">AI is thinking...</p>}
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
+        
         {jobPosting && (
           <div className="space-y-2 pt-4">
-            <Label className="font-semibold">Generated Job Posting</Label>
-            <Textarea readOnly value={jobPosting.jobPosting} className="min-h-[300px] bg-muted/50 font-sans" />
+            <Label className="font-semibold text-lg">Generated Job Posting</Label>
+            <Textarea readOnly value={jobPosting.jobPosting} className="min-h-[400px] bg-muted/50 font-sans" />
             <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(jobPosting.jobPosting)}>Copy Text</Button>
           </div>
         )}

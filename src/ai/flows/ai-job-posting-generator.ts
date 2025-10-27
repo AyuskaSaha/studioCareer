@@ -11,16 +11,21 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const JobPostingInputSchema = z.object({
-  keywords: z
-    .string()
-    .describe('Keywords related to the job, e.g., React, Javascript, Agile.'),
-  details: z.string().describe('Details about the job, such as responsibilities, requirements, and company culture.'),
+  jobTitle: z.string().describe('The title of the job.'),
+  companyName: z.string().describe('The name of the company.'),
+  location: z.string().describe('The location of the job (e.g., "San Francisco, CA", "Remote").'),
+  salaryRange: z.string().optional().describe('The salary range for the position.'),
+  jobType: z.enum(['Full-time', 'Part-time', 'Contract', 'Internship']).describe('The type of employment.'),
+  description: z.string().describe('A general description of the company and the role.'),
+  responsibilities: z.string().describe('A list or description of the job responsibilities.'),
+  mustHaveSkills: z.string().describe('A comma-separated list of essential skills.'),
+  niceToHaveSkills: z.string().optional().describe('A comma-separated list of skills that are nice to have.'),
 });
 
 export type JobPostingInput = z.infer<typeof JobPostingInputSchema>;
 
 const JobPostingOutputSchema = z.object({
-  jobPosting: z.string().describe('The generated job posting text.'),
+  jobPosting: z.string().describe('The generated job posting text, formatted professionally with a timestamp.'),
 });
 
 export type JobPostingOutput = z.infer<typeof JobPostingOutputSchema>;
@@ -33,12 +38,30 @@ const prompt = ai.definePrompt({
   name: 'jobPostingPrompt',
   input: {schema: JobPostingInputSchema},
   output: {schema: JobPostingOutputSchema},
-  prompt: `You are an expert job posting writer. Generate a compelling job posting based on the following keywords and details:
+  prompt: `You are an expert job posting writer. Generate a compelling, professional, and well-structured job posting based on the following details. Include today's date at the top of the posting.
 
-Keywords: {{{keywords}}}
-Details: {{{details}}}
+Job Title: {{{jobTitle}}}
+Company Name: {{{companyName}}}
+Location: {{{location}}}
+Job Type: {{{jobType}}}
+{{#if salaryRange}}
+Salary Range: {{{salaryRange}}}
+{{/if}}
 
-Job Posting:`,
+Company & Role Description:
+{{{description}}}
+
+Responsibilities:
+{{{responsibilities}}}
+
+Qualifications:
+- Must-Have Skills: {{{mustHaveSkills}}}
+{{#if niceToHaveSkills}}
+- Nice-to-Have Skills: {{{niceToHaveSkills}}}
+{{/if}}
+
+Structure the output clearly with sections for Description, Responsibilities, and Qualifications. Ensure the tone is engaging for potential candidates.
+`,
 });
 
 const generateJobPostingFlow = ai.defineFlow(
@@ -49,6 +72,7 @@ const generateJobPostingFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await prompt(input);
-    return output!;
+    const datedPosting = `Posted on: ${new Date().toLocaleDateString()}\n\n${output!.jobPosting}`;
+    return { jobPosting: datedPosting };
   }
 );
