@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { analyzeResume, type AnalyzeResumeOutput } from '@/ai/ai-resume-insights';
 import { suggestJobs, type SuggestJobsOutput } from '@/ai/flows/ai-job-suggestion';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { doc, setDoc, collection, query, where } from 'firebase/firestore';
+import { doc, setDoc, collection, query, where, addDoc } from 'firebase/firestore';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 type ResumeData = {
@@ -169,7 +169,7 @@ function ResumeBuilder() {
   const [analysis, setAnalysis] = useState<AnalyzeResumeOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const { firestore, user } = useFirebase();
+  const { firestore } = useFirebase();
 
   const handlePersonalInfoChange = (field: keyof ResumeData['personalInfo'], value: string) => {
     setResumeData(prev => ({ ...prev, personalInfo: { ...prev.personalInfo, [field]: value }}));
@@ -199,32 +199,27 @@ function ResumeBuilder() {
         });
         return;
     }
-    if (!user) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "You must be logged in to save a resume.",
-      });
-      return;
-    }
+    
+    // In a real app, you would have user auth. For demo, we use a static ID.
+    const userId = 'anonymous-user'; 
 
     setSaving(true);
     setError(null);
     try {
       const resumeText = resumeToText(resumeData);
       // For a multi-resume system, you'd generate a unique ID.
-      // Here, we use the user's UID for simplicity, creating one resume per user.
-      const resumeId = user.uid; 
+      // Here, we use a static ID for simplicity, creating one resume per demo session.
+      const resumeId = `resume-for-${userId}`; 
       const docRef = doc(firestore, "resumes", resumeId);
       const resumePayload = {
         id: resumeId,
-        userProfileId: user.uid,
+        userProfileId: userId,
         title: `${resumeData.personalInfo.name}'s Resume`,
         content: JSON.stringify(resumeData),
         resumeText: resumeText,
       };
 
-      setDocumentNonBlocking(docRef, resumePayload, { merge: true });
+      await setDoc(docRef, resumePayload, { merge: true });
 
       toast({
         title: "Resume Saved",
@@ -392,7 +387,7 @@ function JobSuggestions() {
 function JobSearch() {
   const [queryText, setQueryText] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
-  const { firestore, user } = useFirebase();
+  const { firestore } = useFirebase();
   const { toast } = useToast();
 
   const jobsQuery = useMemoFirebase(() => {
@@ -411,14 +406,39 @@ function JobSearch() {
     setSubmittedQuery(queryText);
   };
   
-  const handleApply = (jobId: string) => {
-    // In a real app, you would create an "application" document in Firestore.
-    // For this demo, we'll just show a success message.
-    // The resume is saved via the "Resume Builder" tab, which the ranker will pick up.
-    toast({
-      title: "Application Sent!",
-      description: "Your resume has been submitted. Employers can now see you in their ranking list.",
-    });
+  const handleApply = async (jobId: string) => {
+    if (!firestore) {
+      toast({
+        title: "Application Sent!",
+        description: "Your resume has been submitted for this demo session.",
+      });
+      return;
+    }
+    
+    const userId = 'anonymous-user';
+
+    try {
+      const applicationsCol = collection(firestore, 'applications');
+      await addDoc(applicationsCol, {
+        jobPostingId: jobId,
+        userProfileId: userId,
+        resumeId: `resume-for-${userId}`, // Matches the ID used in resume builder
+        applicationDate: new Date(),
+        status: 'submitted',
+      });
+      
+      toast({
+        title: "Application Sent!",
+        description: "Your resume has been submitted. Employers can now see you in their ranking list.",
+      });
+    } catch(e) {
+      console.error("Failed to submit application", e);
+      toast({
+        variant: 'destructive',
+        title: "Application Failed",
+        description: "Could not submit your application. Please try again.",
+      });
+    }
   }
 
   return (
@@ -468,16 +488,6 @@ function JobSearch() {
 
 
 export default function JobSeekerPage() {
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  if (!isClient) {
-    return null;
-  }
-  
   return (
     <div className="container mx-auto max-w-7xl py-8 px-4">
       <Tabs defaultValue="builder" className="w-full">

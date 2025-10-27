@@ -234,11 +234,6 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<AnalyzeResumeShortcomingsOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   const handleAnalyze = async () => {
     setLoading(true);
@@ -262,10 +257,6 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
       case 'low': return <Badge variant="secondary" className="bg-green-400 text-black hover:bg-green-400/80">Low</Badge>;
       default: return <Badge variant="outline">{severity}</Badge>;
     }
-  }
-
-  if (!isClient) {
-    return null;
   }
 
   if (!analysis && !loading && !error) {
@@ -571,7 +562,6 @@ export default function EmployerPage() {
   const { toast } = useToast();
 
   const [jobPostings, setJobPostings] = useState<AppJobPosting[]>([]);
-  const [isClient, setIsClient] = useState(false);
 
   const jobPostingsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -584,10 +574,6 @@ export default function EmployerPage() {
 
   const { data: firestorePostings, isLoading: isLoadingFirestore } = useCollection<FirestoreJobPosting>(jobPostingsQuery);
   
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
   useEffect(() => {
     if (firestorePostings) {
       const appPostings = firestorePostings.map(p => ({
@@ -607,8 +593,6 @@ export default function EmployerPage() {
 
 
   useEffect(() => {
-    if (!isClient) return;
-    
     const interval = setInterval(() => {
       let changed = false;
       const now = new Date();
@@ -626,7 +610,7 @@ export default function EmployerPage() {
     }, 60000); // Check every minute
 
     return () => clearInterval(interval);
-  }, [isClient, jobPostings]);
+  }, [jobPostings]);
 
 
   const handleJobSaved = async (newPosting: AppJobPosting) => {
@@ -666,55 +650,66 @@ export default function EmployerPage() {
       await deleteDoc(docRef);
       toast({ title: "Job Deleted", description: "The job posting has been permanently removed." });
     } catch (error) {
-      console.error("Failed to delete from Firestore:", error);
-      toast({ variant: 'destructive', title: "Delete Failed", description: "Could not delete the job from the database." });
+      console.error("Error deleting job from Firestore:", error);
+      toast({ variant: 'destructive', title: "Delete Failed", description: "Could not delete the job posting." });
+      setJobPostings(jobPostings);
     }
   };
   
   const handleJobUpdate = async (jobId: string, updates: Partial<Pick<AppJobPosting, 'status' | 'expiresAt'>>) => {
-     setJobPostings(prev => prev.map(job => job.id === jobId ? {...job, ...updates} : job));
+      // Optimistic UI update
+      setJobPostings(prev => prev.map(job => job.id === jobId ? { ...job, ...updates } : job));
 
-     if (!firestore || jobId.startsWith('new-')) {
-      toast({ title: "Job Updated", description: "The demo job posting has been updated for this session." });
-      return;
-    }
-    
-     try {
-        const docRef = doc(firestore, 'jobPostings', jobId);
-        const firestoreUpdates: any = { ...updates };
-        if (updates.expiresAt !== undefined) {
-          firestoreUpdates.expiresAt = updates.expiresAt ? Timestamp.fromDate(updates.expiresAt) : null;
-        }
-        await updateDoc(docRef, firestoreUpdates);
-        toast({ title: "Job Updated", description: "The job posting has been updated." });
-      } catch (error) {
-          console.error("Failed to update Firestore:", error);
-          toast({ variant: 'destructive', title: "Update Failed", description: "Could not update the job in the database." });
+      if (!firestore || jobId.startsWith('new-')) {
+        toast({ title: "Demo Mode", description: "Status updated for this session only."});
+        return;
       }
-  };
-
-  if (!isClient) {
-    return null;
+      
+      try {
+        const docRef = doc(firestore, "jobPostings", jobId);
+        await updateDoc(docRef, updates);
+        toast({ title: "Job Updated", description: "The job posting status has been changed." });
+      } catch (error) {
+        console.error("Error updating job in Firestore:", error);
+        toast({ variant: 'destructive', title: "Update Failed", description: "Could not update the job posting." });
+        // Revert optimistic update on failure
+        setJobPostings(jobPostings);
+      }
   }
   
-  const isLoading = isLoadingFirestore;
+  if (isLoadingFirestore) {
+    return (
+      <div className="container mx-auto max-w-7xl py-8 px-4 flex justify-center items-center h-full">
+        <Loader2 className="h-16 w-16 animate-spin" />
+      </div>
+    );
+  }
 
   return (
-    <div className="container mx-auto max-w-5xl py-8 px-4">
+    <div className="container mx-auto max-w-7xl py-8 px-4">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3">
+          <TabsTrigger value="generator">Generator</TabsTrigger>
           <TabsTrigger value="ranker">Resume Ranker</TabsTrigger>
-          <TabsTrigger value="generator">Job Posting Generator</TabsTrigger>
           <TabsTrigger value="previous">Previous Postings</TabsTrigger>
         </TabsList>
-        <TabsContent value="ranker" className="mt-4">
-          <ResumeRanker jobPostings={jobPostings} onJobDelete={handleJobDelete} onJobUpdate={handleJobUpdate}/>
-        </TabsContent>
         <TabsContent value="generator" className="mt-4">
           <JobPostingGenerator onJobSaved={handleJobSaved} />
         </TabsContent>
+        <TabsContent value="ranker" className="mt-4">
+          <ResumeRanker 
+            jobPostings={jobPostings}
+            onJobDelete={handleJobDelete} 
+            onJobUpdate={handleJobUpdate} 
+          />
+        </TabsContent>
         <TabsContent value="previous" className="mt-4">
-          <PreviousPostings jobPostings={jobPostings} isLoading={isLoading} onUpdate={handleJobUpdate} onDelete={handleJobDelete}/>
+          <PreviousPostings 
+            jobPostings={jobPostings}
+            isLoading={isLoadingFirestore}
+            onUpdate={handleJobUpdate}
+            onDelete={handleJobDelete}
+          />
         </TabsContent>
       </Tabs>
     </div>
