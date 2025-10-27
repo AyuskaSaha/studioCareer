@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -8,15 +9,26 @@ import { ArrowRight, User, Briefcase } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { useEffect, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 
 export default function Home() {
   const seekerImage = PlaceHolderImages.find(img => img.id === 'job-seeker-card');
   const employerImage = PlaceHolderImages.find(img => img.id === 'employer-card');
   const [year, setYear] = useState(new Date().getFullYear());
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
     setYear(new Date().getFullYear());
+    setIsClient(true);
   }, []);
+
+  if (!isClient) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background">
+        <Loader2 className="h-16 w-16 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
