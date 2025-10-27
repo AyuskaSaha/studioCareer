@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -18,13 +19,25 @@ const RankResumesInputSchema = z.object({
 });
 export type RankResumesInput = z.infer<typeof RankResumesInputSchema>;
 
-const RankResumesOutputSchema = z.array(
-  z.object({
+const ShortcomingSchema = z.object({
+  skill: z.string().describe('The missing or weak skill.'),
+  impact: z.string().describe('The potential impact of this shortcoming on job performance.'),
+  mitigation: z
+    .string()
+    .describe('Suggestions on how the company can mitigate this shortcoming (training, mentoring, etc.).'),
+  severity: z.enum(['critical', 'high', 'moderate', 'low']).describe('The severity level of the shortcoming'),
+});
+
+const RankedResumeSchema = z.object({
     resume: z.string().describe('The resume that was ranked.'),
     rank: z.number().describe('The rank of the resume (1 being the best).'),
     reason: z.string().describe('The reason for the resume ranking.'),
-  })
-).describe('An array of ranked resumes with reasons.');
+    shortcomings: z.array(ShortcomingSchema).describe('An array of identified shortcomings in the resume.'),
+    overallAssessment: z.string().describe('An overall assessment of the candidate, considering their strengths and weaknesses.'),
+});
+
+const RankResumesOutputSchema = z.array(RankedResumeSchema).describe('An array of ranked resumes with reasons and gap analysis.');
+
 export type RankResumesOutput = z.infer<typeof RankResumesOutputSchema>;
 
 // This function is the entry point for the UI. It calls the Genkit flow.
@@ -39,12 +52,14 @@ const rankResumesPrompt = ai.definePrompt({
   tools: [getAllResumesTool],
   prompt: `You are an expert resume ranker for employers. You will be given a job description.
 Your task is to first use the 'getAllResumes' tool to retrieve all resumes from the database.
-Then, rank the retrieved resumes from best to worst based on how well they match the job description.
-Only return the top 10 resumes.
+Then, for each retrieved resume, perform two actions:
+1.  Rank the resume from best to worst based on how well they match the job description.
+2.  Perform a detailed gap analysis (shortcoming analysis) for each resume against the job description. For each identified shortcoming, you must specify the skill, its impact, a mitigation strategy, and a severity ('critical', 'high', 'moderate', or 'low'). Also include an 'overallAssessment'.
 
 Job Description: {{{jobDescription}}}
 
-Output the results as a JSON array of the top 10 ranked resumes with reasons for each ranking.
+Return ONLY the top 10 resumes.
+Output the results as a JSON array. Each element in the array must contain the resume text, its rank, the reason for the rank, and the detailed gap analysis results ('shortcomings' and 'overallAssessment').
 `,
 });
 
