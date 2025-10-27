@@ -496,7 +496,29 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
   );
 }
 
+function PostingTimeDetails({ posting }: { posting: AppJobPosting }) {
+    const [createdAt, setCreatedAt] = useState('');
+    const [expiresAt, setExpiresAt] = useState('');
+    
+    useEffect(() => {
+        if(posting.createdAt) {
+            setCreatedAt(formatDistanceToNow(posting.createdAt.toDate(), { addSuffix: true }))
+        }
+        if(posting.expiresAt) {
+            setExpiresAt(` \u2022 Expires ${formatDistanceToNow(posting.expiresAt, { addSuffix: true })}`)
+        }
+    }, [posting.createdAt, posting.expiresAt]);
+    
+    return(
+        <p className="text-sm text-muted-foreground">
+            at {posting.companyName} &bull; {createdAt}
+            {expiresAt && <span>{expiresAt}</span>}
+        </p>
+    )
+}
+
 function PreviousPostings({ jobPostings, isLoading, onUpdate, onDelete }: { jobPostings: AppJobPosting[], isLoading: boolean, onUpdate: (id: string, updates: any) => void, onDelete: (id: string) => void }) {
+
   return (
     <Card>
       <CardHeader>
@@ -521,10 +543,7 @@ function PreviousPostings({ jobPostings, isLoading, onUpdate, onDelete }: { jobP
                        <h4 className="font-semibold text-lg">{posting.jobTitle}</h4>
                        <Badge variant={posting.status === 'active' ? 'default' : 'secondary'}>{posting.status}</Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      at {posting.companyName} &bull; {formatDistanceToNow(posting.createdAt.toDate(), { addSuffix: true })}
-                      {posting.expiresAt && <span> &bull; Expires {formatDistanceToNow(posting.expiresAt.toDate(), { addSuffix: true })}</span>}
-                    </p>
+                    <PostingTimeDetails posting={posting} />
                   </div>
                   <div className="flex items-center gap-2">
                      <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(posting.jobPostingText)}>Copy Text</Button>
@@ -595,7 +614,7 @@ export default function EmployerPage() {
         if (p.status === 'active' && p.expiresAt && now > p.expiresAt) {
           changed = true;
           handleJobUpdate(p.id, { status: 'inactive' });
-          return { ...p, status: 'inactive' };
+          return { ...p, status: 'inactive' as const };
         }
         return p;
       });
