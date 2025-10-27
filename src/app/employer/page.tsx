@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, UserCheck, Search, FileText, Briefcase, Wand2, Save, Users, Code } from 'lucide-react';
+import { Loader2, Sparkles, UserCheck, Search, FileText, Briefcase, Wand2, Save, Users, Code, Trash2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { generateJobPosting, type JobPostingInput } from '@/ai/flows/ai-job-posting-generator';
@@ -50,6 +50,7 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) 
   const [error, setError] = useState<string | null>(null);
   const { user, firestore } = useFirebase();
   const { toast } = useToast();
+  const [streamedContent, setStreamedContent] = useState('');
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { id, value } = e.target;
@@ -72,9 +73,8 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) 
     }
     setLoading(true);
     setError(null);
-    if (!isRefinement) {
-      setGeneratedPosting('');
-    }
+    setStreamedContent('');
+    setGeneratedPosting('');
 
     try {
       const userId = user ? user.uid : 'anonymous-user';
@@ -90,8 +90,10 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) 
     } catch (e: any) {
       console.error(e);
       setError(e.message || `Failed to ${isRefinement ? 'refine' : 'generate'} job posting. Please try again.`);
+      setGeneratedPosting('');
+    } finally {
+        setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleSave = async () => {
@@ -193,9 +195,9 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) 
           <Input id="niceToHaveSkills" placeholder="Comma-separated, e.g., GraphQL, Docker, AWS" value={formData.niceToHaveSkills || ''} onChange={handleInputChange} disabled={loading}/>
         </div>
         
-        {!generatedPosting && (
+        {!generatedPosting && !loading && (
           <Button onClick={() => handleGenerate(false)} disabled={loading || !canGenerate()}>
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+            <Sparkles className="mr-2 h-4 w-4" />
             Generate Job Posting
           </Button>
         )}
@@ -206,6 +208,7 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) 
           <div className="space-y-4 pt-4 border-t mt-4">
              <div className="space-y-2">
               <Label className="font-semibold text-lg">Generated Job Posting</Label>
+               {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin"/>AI is generating...</div>}
               <Textarea readOnly value={generatedPosting} className="min-h-[400px] bg-muted/50 font-sans" />
             </div>
             
@@ -219,7 +222,7 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) 
                 {loading && refinement ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
                 Refine Posting
               </Button>
-              <Button onClick={handleSave} variant="outline" disabled={loading || saving}>
+              <Button onClick={handleSave} variant="outline" disabled={loading || saving || !generatedPosting}>
                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Save Posting
               </Button>
@@ -317,7 +320,7 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
   )
 }
 
-function ResumeRanker({ jobPostings, onSelectJob }: { jobPostings: AppJobPosting[]; onSelectJob: (job: AppJobPosting) => void; }) {
+function ResumeRanker({ jobPostings, onSelectJob, onJobDelete }: { jobPostings: AppJobPosting[]; onSelectJob: (job: AppJobPosting) => void; onJobDelete: (jobId: string) => void; }) {
   const [loading, setLoading] = useState(false);
   const [selectedJob, setSelectedJob] = useState<AppJobPosting | null>(null);
   const [rankedResumes, setRankedResumes] = useState<RankResumesOutput | null>(null);
@@ -341,6 +344,11 @@ function ResumeRanker({ jobPostings, onSelectJob }: { jobPostings: AppJobPosting
     setLoading(false);
   };
 
+  const handleDelete = (e: React.MouseEvent, jobId: string) => {
+    e.stopPropagation(); // Prevent card's onClick from firing
+    onJobDelete(jobId);
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -354,7 +362,7 @@ function ResumeRanker({ jobPostings, onSelectJob }: { jobPostings: AppJobPosting
             {jobPostings.map(job => (
               <Card 
                 key={job.id} 
-                className="cursor-pointer hover:shadow-md hover:border-primary transition-all"
+                className="cursor-pointer hover:shadow-md hover:border-primary transition-all group relative"
                 onClick={() => handleRank(job)}
               >
                 <CardHeader>
@@ -368,6 +376,9 @@ function ResumeRanker({ jobPostings, onSelectJob }: { jobPostings: AppJobPosting
                     </div>
                   </div>
                 </CardHeader>
+                <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => handleDelete(e, job.id)}>
+                  <Trash2 className="h-4 w-4"/>
+                </Button>
               </Card>
             ))}
           </div>
@@ -527,7 +538,7 @@ export default function EmployerPage() {
   ]);
 
   const handleJobSaved = (newJob: AppJobPosting) => {
-    setJobPostings(prev => [...prev, newJob]);
+    setJobPostings(prev => [newJob, ...prev]);
     // Switch to the ranker tab to show the new job
     setActiveTab('ranker');
   };
@@ -536,6 +547,10 @@ export default function EmployerPage() {
      // This function is just to complete the loop, no state change needed here
      // as the ranker handles its own internal selected job state.
   }
+
+  const handleJobDelete = (jobId: string) => {
+    setJobPostings(prev => prev.filter(job => job.id !== jobId));
+  };
 
   return (
     <div className="container mx-auto max-w-5xl py-8 px-4">
@@ -546,7 +561,7 @@ export default function EmployerPage() {
           <TabsTrigger value="previous">Previous Postings</TabsTrigger>
         </TabsList>
         <TabsContent value="ranker" className="mt-4">
-          <ResumeRanker jobPostings={jobPostings} onSelectJob={handleSelectJobInRanker} />
+          <ResumeRanker jobPostings={jobPostings} onSelectJob={handleSelectJobInRanker} onJobDelete={handleJobDelete} />
         </TabsContent>
         <TabsContent value="generator" className="mt-4">
           <JobPostingGenerator onJobSaved={handleJobSaved} />
