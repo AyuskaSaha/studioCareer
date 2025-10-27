@@ -25,7 +25,7 @@ import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { format } from 'date-fns';
 
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query } from 'firebase/firestore';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 
 
@@ -41,64 +41,6 @@ type AppJobPosting = {
   createdAt: Date;
 };
 
-// DEMO DATA - Replace with your actual data fetching
-const initialJobPostings: AppJobPosting[] = [
-    {
-        id: 'job-1',
-        userProfileId: 'anonymous-user',
-        jobTitle: 'Senior Frontend Developer',
-        companyName: 'Acme Inc.',
-        description: 'Build the future of web applications with our talented team.',
-        jobPostingText: `
-**Job Title: Senior Frontend Developer**
-**Company: Acme Inc.**
-**Location: Remote**
-**Posted on: ${new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}**
-
-**Company Description:**
-Acme Inc. is a leading provider of innovative solutions in the tech industry. We are passionate about creating products that solve real-world problems and push the boundaries of technology. Our team is a vibrant mix of creative thinkers, problem solvers, and tech enthusiasts who are dedicated to excellence.
-
-**Role Description:**
-We are looking for an experienced Senior Frontend Developer to join our dynamic team. In this role, you will be responsible for building and maintaining the user interface of our flagship products. You will work closely with our design and backend teams to create seamless, intuitive, and visually appealing user experiences.
-
-**Responsibilities:**
-- Develop and maintain web applications using modern frontend technologies.
-- Collaborate with UI/UX designers to translate wireframes and mockups into high-quality code.
-- Write clean, maintainable, and efficient code.
-- Optimize applications for maximum speed and scalability.
-- Participate in code reviews and contribute to a culture of continuous improvement.
-
-**Qualifications:**
-- **Must-Have Skills:** React, TypeScript, CSS, Next.js, Git
-- **Nice-to-Have Skills:** GraphQL, Docker, AWS, Storybook
-`,
-        status: 'active',
-        createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
-        expiresAt: new Date(Date.now() + 28 * 24 * 60 * 60 * 1000)
-    },
-    {
-        id: 'job-2',
-        userProfileId: 'anonymous-user',
-        jobTitle: 'UX Designer',
-        companyName: 'Starlight Solutions',
-        description: 'Create beautiful and intuitive user experiences.',
-        jobPostingText: 'Detailed job posting text for UX Designer...',
-        status: 'active',
-        createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // 5 days ago
-        expiresAt: null
-    },
-     {
-        id: 'job-3',
-        userProfileId: 'anonymous-user',
-        jobTitle: 'Data Scientist',
-        companyName: 'QuantumLeap AI',
-        description: 'Analyze data and build predictive models.',
-        jobPostingText: 'Detailed job posting text for Data Scientist...',
-        status: 'inactive',
-        createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000), // 10 days ago
-        expiresAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000)
-    }
-];
 
 const demoRankedResumes: RankResumesOutput = Array.from({ length: 10 }, (_, i) => ({
     rank: i + 1,
@@ -120,6 +62,7 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (newPosting: AppJobPo
   const [refinement, setRefinement] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const { firestore } = useFirebase();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { id, value } = e.target;
@@ -168,34 +111,59 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (newPosting: AppJobPo
   };
 
   const handleSave = async () => {
-    if (!generatedPosting) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Cannot save an empty posting.'});
+    if (!generatedPosting || !firestore) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Cannot save an empty posting or Firestore not available.'});
       return;
     }
     
     setSaving(true);
     const userId = 'anonymous-user';
-    const newPosting: AppJobPosting = {
-      id: `new-${Date.now()}`,
-      userProfileId: userId,
-      jobTitle: formData.jobTitle || 'Untitled Job',
-      companyName: formData.companyName || 'Untitled Company',
-      description: generatedPosting.split('\n')[0],
-      jobPostingText: generatedPosting,
-      status: 'active',
-      createdAt: new Date(),
-      expiresAt: null,
-    };
-    
-    // This is where you would save to Firestore
-    // For demo, we just add it to the local state via callback
-    onJobSaved(newPosting);
-    
-    toast({
-      title: "Job Posting Ready!",
-      description: "Your new job is now available for ranking.",
-    });
-    setSaving(false);
+
+    try {
+        const docRef = await addDoc(collection(firestore, "jobPostings"), {
+            userProfileId: userId,
+            jobTitle: formData.jobTitle || 'Untitled Job',
+            companyName: formData.companyName || 'Untitled Company',
+            description: formData.description || '',
+            jobPostingText: generatedPosting,
+            status: 'active',
+            createdAt: new Date(),
+            expiresAt: null,
+            // Include other form data as needed
+            location: formData.location,
+            salaryRange: formData.salaryRange,
+            jobType: formData.jobType,
+        });
+
+        const newPosting: AppJobPosting = {
+            id: docRef.id,
+            userProfileId: userId,
+            jobTitle: formData.jobTitle || 'Untitled Job',
+            companyName: formData.companyName || 'Untitled Company',
+            description: generatedPosting.split('\n')[0],
+            jobPostingText: generatedPosting,
+            status: 'active',
+            createdAt: new Date(),
+            expiresAt: null,
+        };
+        
+        onJobSaved(newPosting);
+        
+        toast({
+          title: "Job Posting Saved!",
+          description: "Your new job posting has been saved to Firestore.",
+        });
+
+    } catch (error) {
+        console.error("Error saving job posting: ", error);
+        toast({
+            variant: "destructive",
+            title: "Save Failed",
+            description: "Could not save the job posting to the database.",
+        });
+    } finally {
+        setSaving(false);
+    }
   }
   
   return (
@@ -238,7 +206,7 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (newPosting: AppJobPo
           </div>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="description">Company & Role Description</Label>
+          <Label htmlFor="description">Company &amp; Role Description</Label>
           <Textarea id="description" placeholder="Describe your company's mission, culture, and the role's purpose." className="min-h-[100px]" value={formData.description || ''} onChange={handleInputChange} disabled={loading}/>
         </div>
         <div className="space-y-2">
@@ -303,15 +271,7 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
     setError(null);
     setAnalysis(null);
     try {
-      // In a real app, you'd call the AI flow. Here, we'll use a delay and sample data.
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      const result: AnalyzeResumeShortcomingsOutput = {
-        shortcomings: [
-          { skill: 'GraphQL', impact: 'Potential slowdown in API integration tasks.', mitigation: 'Provide a 2-week intensive course on GraphQL and pair with a senior developer for the first month.', severity: 'moderate' },
-          { skill: 'AWS Experience', impact: 'May require additional support for deployment and infrastructure management.', mitigation: 'Enroll in AWS certification program and provide hands-on projects in a sandbox environment.', severity: 'high' }
-        ],
-        overallAssessment: "The candidate shows strong foundational skills in frontend development but lacks experience in some of our secondary stack. With targeted training, they can become a valuable contributor."
-      };
+      const result = await analyzeResumeShortcomings({ resumeText: resume, jobDescription });
       setAnalysis(result);
     } catch (e) {
       console.error(e);
@@ -392,12 +352,8 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
     setError(null);
     setRankedResumes(null);
     try {
-      // In a real app, you would call the AI flow.
-      // For this demo, we'll simulate a delay and use static data.
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      // const result = await rankResumes({ jobDescription: job.jobPostingText });
-      const sortedResumes = demoRankedResumes.sort((a, b) => a.rank - b.rank);
-      setRankedResumes(sortedResumes);
+      const result = await rankResumes({ jobDescription: job.jobPostingText });
+      setRankedResumes(result);
     } catch (e: any) {
       console.error(e);
       setError(e.message || "Failed to rank resumes. Please try again.");
@@ -545,7 +501,7 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
                       
                       <div className="p-4 border rounded-md bg-muted/20">
                         <h5 className="font-medium mb-2">Resume Snippet</h5>
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap font-sans line-clamp-4">{item.resume}</p>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap font-sans">{item.resume}</p>
                       </div>
 
                       <ShortcomingAnalysis resume={item.resume} jobDescription={selectedJob.jobPostingText} />
@@ -587,7 +543,7 @@ function PreviousPostings({ jobPostings, onDelete }: { jobPostings: AppJobPostin
                        <Badge variant={posting.status === 'active' ? 'default' : 'secondary'}>{posting.status}</Badge>
                     </div>
                      <p className="text-sm text-muted-foreground">
-                        at {posting.companyName} &bull; Created on {format(posting.createdAt, "PPP")}
+                        at {posting.companyName} &bull; Created on {format(new Date(posting.createdAt), "PPP")}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -610,24 +566,64 @@ function PreviousPostings({ jobPostings, onDelete }: { jobPostings: AppJobPostin
 export default function EmployerPage() {
   const [activeTab, setActiveTab] = useState("generator");
   const { toast } = useToast();
-  const [jobPostings, setJobPostings] = useState<AppJobPosting[]>(initialJobPostings);
+  const { firestore } = useFirebase();
 
-  const handleJobUpdate = (jobId: string, updates: Partial<Pick<AppJobPosting, 'status' | 'expiresAt'>>) => {
-      setJobPostings(prev => prev.map(job => job.id === jobId ? { ...job, ...updates } : job));
-      toast({ title: "Job Updated", description: "The job posting has been changed for this session." });
-  }
+  const jobPostingsQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return query(collection(firestore, "jobPostings"));
+  }, [firestore]);
+  
+  const { data: jobPostingsData, isLoading: isLoadingPostings } = useCollection<Omit<AppJobPosting, 'id' | 'createdAt' | 'expiresAt'> & { createdAt: { toDate: () => Date }, expiresAt: { toDate: () => Date } | null }>(jobPostingsQuery);
+
+  const jobPostings: AppJobPosting[] = useMemoFirebase(() => {
+    if (!jobPostingsData) return [];
+    return jobPostingsData.map(p => ({
+        ...p,
+        id: p.id,
+        createdAt: p.createdAt.toDate(),
+        expiresAt: p.expiresAt ? p.expiresAt.toDate() : null,
+    })).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }, [jobPostingsData]) || [];
+
 
   const handleJobSaved = (newPosting: AppJobPosting) => {
-    setJobPostings(prev => [newPosting, ...prev].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()));
-    toast({ title: "Job Saved", description: "Job posting saved for this session."});
+    // The useCollection hook will automatically update the list
+    toast({ title: "Job Saved", description: "Job posting saved and will appear in the lists."});
     setActiveTab('ranker');
   };
 
-  const handleJobDelete = (jobId: string) => {
-    setJobPostings(prev => prev.filter(job => job.id !== jobId));
-    toast({ title: "Job Deleted", description: "The job posting has been removed for this session." });
+  const handleJobUpdate = async (jobId: string, updates: Partial<Pick<AppJobPosting, 'status' | 'expiresAt'>>) => {
+      if (!firestore) return;
+      const docRef = doc(firestore, "jobPostings", jobId);
+      try {
+        await updateDoc(docRef, updates);
+        toast({ title: "Job Updated", description: "The job posting status has been updated." });
+      } catch (error) {
+        console.error("Error updating job posting: ", error);
+        toast({ variant: 'destructive', title: "Update Failed", description: "Could not update the job posting." });
+      }
+  }
+
+  const handleJobDelete = async (jobId: string) => {
+    if (!firestore) return;
+    const docRef = doc(firestore, "jobPostings", jobId);
+    try {
+      await deleteDoc(docRef);
+      toast({ title: "Job Deleted", description: "The job posting has been permanently removed." });
+    } catch (error) {
+      console.error("Error deleting job posting: ", error);
+      toast({ variant: 'destructive', title: "Delete Failed", description: "Could not delete the job posting." });
+    }
   };
   
+  if (isLoadingPostings) {
+    return (
+        <div className="container mx-auto max-w-7xl py-8 px-4 flex justify-center items-center h-[calc(100vh-8rem)]">
+            <Loader2 className="h-16 w-16 animate-spin" />
+        </div>
+    )
+  }
+
   return (
     <div className="container mx-auto max-w-7xl py-8 px-4">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -656,3 +652,5 @@ export default function EmployerPage() {
     </div>
   );
 }
+
+    
