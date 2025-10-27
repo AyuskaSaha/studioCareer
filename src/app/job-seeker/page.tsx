@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, Lightbulb, Search, Briefcase, User, Save, FileText, CheckCircle, XCircle, Circle, Trash2 } from 'lucide-react';
+import { Loader2, Sparkles, Lightbulb, Search, Briefcase, User, Save, FileText, CheckCircle, XCircle, Circle, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useJobs, type AppJobPosting } from '@/app/job-context';
 import { formatDistanceToNow } from 'date-fns';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 type ResumeData = {
   personalInfo: {
@@ -133,36 +134,69 @@ function ResumePreview({ data }: { data: ResumeData }) {
   )
 }
 
+function SectionAnalysis({ analysis }: { analysis: AnalyzeResumeOutput['sectionAnalyses'][0] }) {
+  const [isOpen, setIsOpen] = useState(true);
+
+  return (
+     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Card className="bg-muted/30">
+        <CardHeader className="p-4">
+            <CollapsibleTrigger className="flex justify-between items-center w-full">
+                <CardTitle className="text-lg font-semibold">{analysis.section}</CardTitle>
+                <div className="flex items-center gap-2">
+                    <span className="font-bold text-base text-primary">{analysis.score}/100</span>
+                    {isOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                </div>
+            </CollapsibleTrigger>
+            <Progress value={analysis.score} className="w-full h-2 mt-2" />
+        </CardHeader>
+        <CollapsibleContent>
+            <CardContent className="px-4 pb-4 space-y-3">
+                <div>
+                    <h4 className="font-semibold text-sm">Reasoning:</h4>
+                    <p className="text-sm text-muted-foreground">{analysis.reasoning}</p>
+                </div>
+                <div>
+                    <h4 className="font-semibold text-sm">Suggestions:</h4>
+                    <p className="text-sm text-muted-foreground">{analysis.suggestions}</p>
+                </div>
+            </CardContent>
+        </CollapsibleContent>
+      </Card>
+     </Collapsible>
+  )
+}
+
+
 function ResumeAnalysisDisplay({ analysis }: { analysis: AnalyzeResumeOutput | null }) {
   if (!analysis) return null;
 
   return (
-    <div className="pt-4 space-y-4">
+    <div className="pt-4 space-y-6">
       <Separator />
       <h3 className="font-headline text-xl font-semibold">AI Resume Analysis</h3>
-      {analysis.atsScore !== null && (
-        <div className="space-y-2">
-          <Label className="font-semibold">ATS Score</Label>
-          <div className="flex items-center gap-4">
-            <Progress value={analysis.atsScore} className="w-full" />
-            <span className="font-bold text-lg text-primary">{analysis.atsScore}%</span>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            This score estimates how well your resume might perform in an Applicant Tracking System.
-          </p>
+      
+      <div className="space-y-2">
+        <Label className="font-semibold text-base">Overall ATS Score</Label>
+        <div className="flex items-center gap-4">
+          <Progress value={analysis.overallScore} className="w-full h-3" />
+          <span className="font-bold text-2xl text-primary">{analysis.overallScore}%</span>
         </div>
-      )}
-      {analysis.insights && (
-        <div className="space-y-2">
-          <Label className="font-semibold">AI Insights & Suggestions</Label>
-          <div className="p-4 border rounded-md bg-muted/30 text-sm">
-            <p className="whitespace-pre-wrap">{analysis.insights}</p>
-          </div>
+         <p className="text-sm text-muted-foreground">{analysis.overallSummary}</p>
+      </div>
+
+      {analysis.sectionAnalyses && analysis.sectionAnalyses.length > 0 && (
+         <div className="space-y-4">
+            <Label className="font-semibold text-base">Section Breakdown</Label>
+            {analysis.sectionAnalyses.map((section, index) => (
+                <SectionAnalysis key={index} analysis={section} />
+            ))}
         </div>
       )}
     </div>
   );
 }
+
 
 
 function ResumeBuilder() {
