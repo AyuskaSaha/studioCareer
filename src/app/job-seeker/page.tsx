@@ -18,7 +18,6 @@ import { analyzeResume, type AnalyzeResumeOutput } from '@/ai/ai-resume-insights
 import { suggestJobs, type SuggestJobsOutput } from '@/ai/flows/ai-job-suggestion';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { doc, setDoc, collection, query, where, addDoc } from 'firebase/firestore';
-import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 type ResumeData = {
   personalInfo: {
@@ -488,6 +487,16 @@ function JobSearch() {
 
 
 export default function JobSeekerPage() {
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  if (!isClient) {
+    return null;
+  }
+  
   return (
     <div className="container mx-auto max-w-7xl py-8 px-4">
       <Tabs defaultValue="builder" className="w-full">
