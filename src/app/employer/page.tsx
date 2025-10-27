@@ -62,7 +62,6 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (newPosting: AppJobPo
   const [refinement, setRefinement] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const { firestore } = useFirebase();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { id, value } = e.target;
@@ -111,36 +110,23 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (newPosting: AppJobPo
   };
 
   const handleSave = async () => {
-    if (!generatedPosting || !firestore) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Cannot save an empty posting or Firestore not available.'});
+    if (!generatedPosting) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Cannot save an empty posting.'});
       return;
     }
     
     setSaving(true);
     const userId = 'anonymous-user';
 
+    // In a real app, we would save to Firestore here.
+    // For the demo, we'll just create the object and pass it up.
     try {
-        const docRef = await addDoc(collection(firestore, "jobPostings"), {
-            userProfileId: userId,
-            jobTitle: formData.jobTitle || 'Untitled Job',
-            companyName: formData.companyName || 'Untitled Company',
-            description: formData.description || '',
-            jobPostingText: generatedPosting,
-            status: 'active',
-            createdAt: new Date(),
-            expiresAt: null,
-            // Include other form data as needed
-            location: formData.location,
-            salaryRange: formData.salaryRange,
-            jobType: formData.jobType,
-        });
-
         const newPosting: AppJobPosting = {
-            id: docRef.id,
+            id: `job-${Date.now()}`, // Simple unique ID for demo
             userProfileId: userId,
             jobTitle: formData.jobTitle || 'Untitled Job',
             companyName: formData.companyName || 'Untitled Company',
-            description: generatedPosting.split('\n')[0],
+            description: generatedPosting.split('\n')[0], // Use first line as short desc
             jobPostingText: generatedPosting,
             status: 'active',
             createdAt: new Date(),
@@ -151,15 +137,15 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (newPosting: AppJobPo
         
         toast({
           title: "Job Posting Saved!",
-          description: "Your new job posting has been saved to Firestore.",
+          description: "Your new job posting has been created.",
         });
 
     } catch (error) {
-        console.error("Error saving job posting: ", error);
+        console.error("Error creating job posting: ", error);
         toast({
             variant: "destructive",
             title: "Save Failed",
-            description: "Could not save the job posting to the database.",
+            description: "Could not create the job posting.",
         });
     } finally {
         setSaving(false);
