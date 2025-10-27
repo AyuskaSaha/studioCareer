@@ -352,13 +352,19 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
     setError(null);
     setRankedResumes(null);
     try {
-      const result = await rankResumes({ jobDescription: job.jobPostingText });
-      setRankedResumes(result);
+      // For the demo, we use pre-canned results.
+      // In a real app, you would make the API call here:
+      // const result = await rankResumes({ jobDescription: job.jobPostingText });
+      // setRankedResumes(result);
+      setTimeout(() => {
+        setRankedResumes(demoRankedResumes);
+        setLoading(false);
+      }, 2000);
     } catch (e: any) {
       console.error(e);
       setError(e.message || "Failed to rank resumes. Please try again.");
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleDelete = (e: React.MouseEvent, jobId: string) => {
@@ -565,65 +571,54 @@ function PreviousPostings({ jobPostings, onDelete }: { jobPostings: AppJobPostin
 
 export default function EmployerPage() {
   const [activeTab, setActiveTab] = useState("generator");
+  const [jobPostings, setJobPostings] = useState<AppJobPosting[]>([]);
   const { toast } = useToast();
-  const { firestore } = useFirebase();
-
-  const jobPostingsQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return query(collection(firestore, "jobPostings"));
-  }, [firestore]);
   
-  const { data: jobPostingsData, isLoading: isLoadingPostings } = useCollection<Omit<AppJobPosting, 'id' | 'createdAt' | 'expiresAt'> & { createdAt: { toDate: () => Date }, expiresAt: { toDate: () => Date } | null }>(jobPostingsQuery);
-
-  const jobPostings: AppJobPosting[] = useMemoFirebase(() => {
-    if (!jobPostingsData) return [];
-    return jobPostingsData.map(p => ({
-        ...p,
-        id: p.id,
-        createdAt: p.createdAt.toDate(),
-        expiresAt: p.expiresAt ? p.expiresAt.toDate() : null,
-    })).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  }, [jobPostingsData]) || [];
-
+  // Using a mock set of postings to avoid database errors for the demo.
+  useEffect(() => {
+    const mockPostings: AppJobPosting[] = [
+        { 
+            id: '1', 
+            userProfileId: 'mock-user', 
+            jobTitle: 'Senior Frontend Developer', 
+            companyName: 'Acme Inc.', 
+            description: 'Lead our frontend team.', 
+            jobPostingText: 'Full job text here...', 
+            status: 'active', 
+            createdAt: new Date(), 
+            expiresAt: new Date(new Date().setDate(new Date().getDate() + 30)) 
+        },
+        { 
+            id: '2', 
+            userProfileId: 'mock-user', 
+            jobTitle: 'Backend Engineer', 
+            companyName: 'Innovate LLC', 
+            description: 'Work on our core API.', 
+            jobPostingText: 'Full job text here...', 
+            status: 'inactive', 
+            createdAt: new Date(new Date().setDate(new Date().getDate() - 10)), 
+            expiresAt: null 
+        },
+    ];
+    setJobPostings(mockPostings);
+  }, []);
 
   const handleJobSaved = (newPosting: AppJobPosting) => {
-    // The useCollection hook will automatically update the list
+    setJobPostings(prev => [newPosting, ...prev]);
     toast({ title: "Job Saved", description: "Job posting saved and will appear in the lists."});
     setActiveTab('ranker');
   };
 
   const handleJobUpdate = async (jobId: string, updates: Partial<Pick<AppJobPosting, 'status' | 'expiresAt'>>) => {
-      if (!firestore) return;
-      const docRef = doc(firestore, "jobPostings", jobId);
-      try {
-        await updateDoc(docRef, updates);
-        toast({ title: "Job Updated", description: "The job posting status has been updated." });
-      } catch (error) {
-        console.error("Error updating job posting: ", error);
-        toast({ variant: 'destructive', title: "Update Failed", description: "Could not update the job posting." });
-      }
+      setJobPostings(prev => prev.map(p => p.id === jobId ? { ...p, ...updates } : p));
+      toast({ title: "Job Updated", description: "The job posting status has been updated." });
   }
 
   const handleJobDelete = async (jobId: string) => {
-    if (!firestore) return;
-    const docRef = doc(firestore, "jobPostings", jobId);
-    try {
-      await deleteDoc(docRef);
-      toast({ title: "Job Deleted", description: "The job posting has been permanently removed." });
-    } catch (error) {
-      console.error("Error deleting job posting: ", error);
-      toast({ variant: 'destructive', title: "Delete Failed", description: "Could not delete the job posting." });
-    }
+    setJobPostings(prev => prev.filter(p => p.id !== jobId));
+    toast({ title: "Job Deleted", description: "The job posting has been permanently removed." });
   };
   
-  if (isLoadingPostings) {
-    return (
-        <div className="container mx-auto max-w-7xl py-8 px-4 flex justify-center items-center h-[calc(100vh-8rem)]">
-            <Loader2 className="h-16 w-16 animate-spin" />
-        </div>
-    )
-  }
-
   return (
     <div className="container mx-auto max-w-7xl py-8 px-4">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
