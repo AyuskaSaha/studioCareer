@@ -40,11 +40,11 @@ const rankResumesPrompt = ai.definePrompt({
   prompt: `You are an expert resume ranker for employers. You will be given a job description.
 Your task is to first use the 'getAllResumes' tool to retrieve all resumes from the database.
 Then, rank the retrieved resumes from best to worst based on how well they match the job description.
-Only return the top 3 resumes.
+Only return the top 10 resumes.
 
 Job Description: {{{jobDescription}}}
 
-Output the results as a JSON array of the top 3 ranked resumes with reasons for each ranking.
+Output the results as a JSON array of the top 10 ranked resumes with reasons for each ranking.
 `,
 });
 

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +25,9 @@ import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { format } from 'date-fns';
 
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs } from 'firebase/firestore';
+import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
+
 
 type AppJobPosting = {
   id: string;
@@ -38,6 +41,7 @@ type AppJobPosting = {
   createdAt: Date;
 };
 
+// DEMO DATA - Replace with your actual data fetching
 const initialJobPostings: AppJobPosting[] = [
     {
         id: 'job-1',
@@ -45,7 +49,29 @@ const initialJobPostings: AppJobPosting[] = [
         jobTitle: 'Senior Frontend Developer',
         companyName: 'Acme Inc.',
         description: 'Build the future of web applications with our talented team.',
-        jobPostingText: 'Detailed job posting text for Senior Frontend Developer...',
+        jobPostingText: `
+**Job Title: Senior Frontend Developer**
+**Company: Acme Inc.**
+**Location: Remote**
+**Posted on: ${new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}**
+
+**Company Description:**
+Acme Inc. is a leading provider of innovative solutions in the tech industry. We are passionate about creating products that solve real-world problems and push the boundaries of technology. Our team is a vibrant mix of creative thinkers, problem solvers, and tech enthusiasts who are dedicated to excellence.
+
+**Role Description:**
+We are looking for an experienced Senior Frontend Developer to join our dynamic team. In this role, you will be responsible for building and maintaining the user interface of our flagship products. You will work closely with our design and backend teams to create seamless, intuitive, and visually appealing user experiences.
+
+**Responsibilities:**
+- Develop and maintain web applications using modern frontend technologies.
+- Collaborate with UI/UX designers to translate wireframes and mockups into high-quality code.
+- Write clean, maintainable, and efficient code.
+- Optimize applications for maximum speed and scalability.
+- Participate in code reviews and contribute to a culture of continuous improvement.
+
+**Qualifications:**
+- **Must-Have Skills:** React, TypeScript, CSS, Next.js, Git
+- **Nice-to-Have Skills:** GraphQL, Docker, AWS, Storybook
+`,
         status: 'active',
         createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
         expiresAt: new Date(Date.now() + 28 * 24 * 60 * 60 * 1000)
@@ -73,6 +99,17 @@ const initialJobPostings: AppJobPosting[] = [
         expiresAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000)
     }
 ];
+
+const demoRankedResumes: RankResumesOutput = Array.from({ length: 10 }, (_, i) => ({
+    rank: i + 1,
+    resume: `
+Name: Candidate ${i + 1}
+Summary: A passionate developer with ${i + 2} years of experience in creating dynamic and responsive web applications.
+Experience: Worked on various projects, enhancing user engagement and system performance.
+Skills: JavaScript, React, Node.js, ${i % 2 === 0 ? 'TypeScript' : 'Python'}, SQL
+`,
+    reason: `Candidate ${i + 1} is ranked #${i + 1} due to their strong alignment with the key skills required, particularly their experience in React and Node.js. Their project history demonstrates capabilities relevant to the job description.`
+}));
 
 
 function JobPostingGenerator({ onJobSaved }: { onJobSaved: (newPosting: AppJobPosting) => void }) {
@@ -150,11 +187,13 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (newPosting: AppJobPo
       expiresAt: null,
     };
     
+    // This is where you would save to Firestore
+    // For demo, we just add it to the local state via callback
     onJobSaved(newPosting);
     
     toast({
       title: "Job Posting Ready!",
-      description: "Your new job is now available in the 'Resume Ranker' tab.",
+      description: "Your new job is now available for ranking.",
     });
     setSaving(false);
   }
@@ -264,7 +303,15 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
     setError(null);
     setAnalysis(null);
     try {
-      const result = await analyzeResumeShortcomings({ resumeText: resume, jobDescription });
+      // In a real app, you'd call the AI flow. Here, we'll use a delay and sample data.
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      const result: AnalyzeResumeShortcomingsOutput = {
+        shortcomings: [
+          { skill: 'GraphQL', impact: 'Potential slowdown in API integration tasks.', mitigation: 'Provide a 2-week intensive course on GraphQL and pair with a senior developer for the first month.', severity: 'moderate' },
+          { skill: 'AWS Experience', impact: 'May require additional support for deployment and infrastructure management.', mitigation: 'Enroll in AWS certification program and provide hands-on projects in a sandbox environment.', severity: 'high' }
+        ],
+        overallAssessment: "The candidate shows strong foundational skills in frontend development but lacks experience in some of our secondary stack. With targeted training, they can become a valuable contributor."
+      };
       setAnalysis(result);
     } catch (e) {
       console.error(e);
@@ -283,23 +330,23 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
     }
   }
 
-  if (!analysis && !loading && !error) {
-     return (
-        <div className="mt-4">
-          <Button variant="secondary" size="sm" onClick={handleAnalyze} disabled={loading}>
-            Analyze Shortcomings
-          </Button>
-       </div>
-     );
-  }
-
   return (
     <div className="mt-4 rounded-md border bg-card/50 p-4">
-      <h4 className="font-semibold mb-2">Gap Analysis</h4>
-      {loading && <p className="text-sm text-muted-foreground mt-2 animate-pulse">Analyzing resume gaps...</p>}
+       {!analysis && !loading && !error && (
+         <div className="flex items-center justify-between">
+           <p className="text-sm text-muted-foreground">Run AI gap analysis for this candidate.</p>
+          <Button variant="secondary" size="sm" onClick={handleAnalyze} disabled={loading}>
+            Analyze Gaps
+          </Button>
+       </div>
+       )}
+
+      {loading && <p className="text-sm text-muted-foreground animate-pulse">Analyzing resume gaps...</p>}
       {error && <p className="text-sm text-destructive mt-2">{error}</p>}
+      
       {analysis && (
-        <div className="mt-2 space-y-4">
+        <div className="space-y-4">
+          <h4 className="font-semibold">Gap Analysis</h4>
           <div className="space-y-2">
             <h5 className="font-medium text-sm">Overall Assessment</h5>
             <p className="text-sm text-muted-foreground">{analysis.overallAssessment}</p>
@@ -345,8 +392,11 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
     setError(null);
     setRankedResumes(null);
     try {
-      const result = await rankResumes({ jobDescription: job.jobPostingText });
-      const sortedResumes = result.sort((a, b) => a.rank - b.rank);
+      // In a real app, you would call the AI flow.
+      // For this demo, we'll simulate a delay and use static data.
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      // const result = await rankResumes({ jobDescription: job.jobPostingText });
+      const sortedResumes = demoRankedResumes.sort((a, b) => a.rank - b.rank);
       setRankedResumes(sortedResumes);
     } catch (e: any) {
       console.error(e);
@@ -404,7 +454,7 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
                     </div>
                     <div>
                       <CardTitle className="text-xl">{job.jobTitle}</CardTitle>
-                      <CardDescription className="mt-1 line-clamp-3">{job.description}</CardDescription>
+                      <CardDescription className="mt-1 line-clamp-2">{job.description}</CardDescription>
                     </div>
                   </div>
                 </CardHeader>
@@ -426,7 +476,7 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
                       </div>
                        {job.status === 'active' && (
                         <Button variant="destructive" size="sm" onClick={(e) => { e.stopPropagation(); handleStatusChange(job.id, false); }}>
-                          Stop Accepting
+                          Deactivate
                         </Button>
                       )}
                     </div>
@@ -558,9 +608,8 @@ function PreviousPostings({ jobPostings, onDelete }: { jobPostings: AppJobPostin
 
 
 export default function EmployerPage() {
-  const [activeTab, setActiveTab] = useState("ranker");
+  const [activeTab, setActiveTab] = useState("generator");
   const { toast } = useToast();
-  
   const [jobPostings, setJobPostings] = useState<AppJobPosting[]>(initialJobPostings);
 
   const handleJobUpdate = (jobId: string, updates: Partial<Pick<AppJobPosting, 'status' | 'expiresAt'>>) => {
@@ -569,9 +618,9 @@ export default function EmployerPage() {
   }
 
   const handleJobSaved = (newPosting: AppJobPosting) => {
-    setActiveTab('ranker');
     setJobPostings(prev => [newPosting, ...prev].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()));
     toast({ title: "Job Saved", description: "Job posting saved for this session."});
+    setActiveTab('ranker');
   };
 
   const handleJobDelete = (jobId: string) => {
