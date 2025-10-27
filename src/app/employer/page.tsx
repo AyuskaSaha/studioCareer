@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, Wand2, Save, Users, Code, Trash2, CalendarIcon, FileText, Check, X } from 'lucide-react';
+import { Loader2, Sparkles, Wand2, Save, Users, Code, Trash2, CalendarIcon, FileText, Check, X, ChevronsUpDown } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { generateJobPosting, type JobPostingInput } from '@/ai/flows/ai-job-posting-generator';
@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { format } from 'date-fns';
 import { useJobs, type AppJobPosting } from '@/app/job-context';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 const demoRankedResumes: RankResumesOutput = [
   {
@@ -585,38 +586,50 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
                 const candidateName = item.resume.match(/Name: (.*)/)?.[1] || 'Unknown Candidate';
                 const decision = decisions[item.rank];
                 return (
-                <Card key={item.rank} className={cn("p-4 transition-all",
-                  decision === 'Accepted' && 'border-2 border-green-500',
-                  decision === 'Rejected' && 'border-2 border-destructive'
-                )}>
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg flex-shrink-0">{item.rank}</div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold">Reasoning for Rank</h4>
-                      <p className="text-sm text-muted-foreground mb-2">{item.reason}</p>
-                      
-                      <div className="p-4 border rounded-md bg-muted/20">
-                        <h5 className="font-medium mb-2">Resume Snippet</h5>
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap font-sans">{item.resume}</p>
-                      </div>
-
-                      <ShortcomingAnalysis analysis={{ shortcomings: item.shortcomings, overallAssessment: item.overallAssessment }} />
-
-                      {!decision && (
-                        <div className="flex gap-2 mt-4">
-                          <Button size="sm" onClick={() => handleDecision(item.rank, candidateName, 'Accepted')} className="bg-green-600 hover:bg-green-700">
-                            <Check className="mr-2 h-4 w-4" />
-                            Accept
-                          </Button>
-                          <Button size="sm" variant="destructive" onClick={() => handleDecision(item.rank, candidateName, 'Rejected')}>
-                            <X className="mr-2 h-4 w-4" />
-                            Reject
-                          </Button>
+                  <Collapsible key={item.rank} asChild>
+                    <Card className={cn("p-4 transition-all",
+                      decision === 'Accepted' && 'border-2 border-green-500',
+                      decision === 'Rejected' && 'border-2 border-destructive'
+                    )}>
+                      <div className="flex items-start gap-4">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg flex-shrink-0">{item.rank}</div>
+                        <div className="flex-1">
+                          <h4 className="font-semibold">Reasoning for Rank</h4>
+                          <p className="text-sm text-muted-foreground mb-2">{item.reason}</p>
+                          
+                          <div className="p-4 border rounded-md bg-muted/20">
+                            <h5 className="font-medium mb-2">Resume Snippet</h5>
+                            <p className="text-sm text-muted-foreground whitespace-pre-wrap font-sans">{item.resume}</p>
+                          </div>
+    
+                          <CollapsibleContent className="collapsible-content">
+                            <ShortcomingAnalysis analysis={{ shortcomings: item.shortcomings, overallAssessment: item.overallAssessment }} />
+                          </CollapsibleContent>
+    
+                          <div className="flex flex-wrap gap-2 mt-4">
+                              <CollapsibleTrigger asChild>
+                                  <Button variant="outline" size="sm">
+                                      <ChevronsUpDown className="mr-2 h-4 w-4" />
+                                      Show Gap Analysis
+                                  </Button>
+                              </CollapsibleTrigger>
+                            {!decision && (
+                              <div className="flex gap-2">
+                                <Button size="sm" onClick={() => handleDecision(item.rank, candidateName, 'Accepted')} className="bg-green-600 hover:bg-green-700">
+                                  <Check className="mr-2 h-4 w-4" />
+                                  Accept
+                                </Button>
+                                <Button size="sm" variant="destructive" onClick={() => handleDecision(item.rank, candidateName, 'Rejected')}>
+                                  <X className="mr-2 h-4 w-4" />
+                                  Reject
+                                </Button>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                </Card>
+                      </div>
+                    </Card>
+                  </Collapsible>
               )})}
             </div>
           </div>
@@ -721,5 +734,3 @@ export default function EmployerPage() {
     </div>
   );
 }
-
-    
