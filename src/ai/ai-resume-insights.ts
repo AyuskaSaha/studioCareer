@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -48,13 +49,9 @@ const analyzeResumePrompt = ai.definePrompt({
 You will analyze the resume and provide actionable suggestions to improve its chances of getting past Applicant Tracking Systems (ATS) and impressing recruiters.
 
 Your analysis MUST be structured as follows:
-1.  **Overall Score**: An overall ATS score for the entire resume (0-100).
-2.  **Overall Summary**: A brief, high-level summary of the candidate's profile.
-3.  **Section-by-Section Analysis**: A point-wise breakdown of the key resume sections (e.g., Summary, Experience, Skills, Education). For EACH section, you must provide:
-    - A `section` name.
-    - A `score` for that section (0-100).
-    - Clear `reasoning` for why you gave that score.
-    - Concrete, actionable `suggestions` on how to improve the section and its score.
+1.  An "overallScore" for the entire resume (0-100).
+2.  An "overallSummary" of the candidate's profile.
+3.  A "sectionAnalyses" array for the key resume sections (e.g., Summary, Experience, Skills, Education). For each item in the array, you must provide a "section" name, a "score" for that section (0-100), clear "reasoning" for the score, and concrete, actionable "suggestions" for improvement.
 
 {{#if jobDescription}}
 Tailor your entire analysis to the specific requirements of this job description:
