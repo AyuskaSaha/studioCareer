@@ -654,8 +654,9 @@ export default function EmployerPage() {
   };
 
   const handleJobDelete = async (jobId: string) => {
+    setJobPostings(prev => prev.filter(job => job.id !== jobId));
+    
     if (!firestore || jobId.startsWith('new-')) {
-      setJobPostings(prev => prev.filter(job => job.id !== jobId));
       toast({ title: "Job Removed", description: "The demo job posting has been removed from this session." });
       return;
     }
@@ -671,8 +672,9 @@ export default function EmployerPage() {
   };
   
   const handleJobUpdate = async (jobId: string, updates: Partial<Pick<AppJobPosting, 'status' | 'expiresAt'>>) => {
+     setJobPostings(prev => prev.map(job => job.id === jobId ? {...job, ...updates} : job));
+
      if (!firestore || jobId.startsWith('new-')) {
-      setJobPostings(prev => prev.map(job => job.id === jobId ? {...job, ...updates} : job));
       toast({ title: "Job Updated", description: "The demo job posting has been updated for this session." });
       return;
     }
