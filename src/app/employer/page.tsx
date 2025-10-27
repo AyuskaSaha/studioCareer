@@ -18,14 +18,12 @@ import { analyzeResumeShortcomings, type AnalyzeResumeShortcomingsOutput } from 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
-import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, orderBy, where, Timestamp, serverTimestamp, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
-import { format, formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
+import { format } from 'date-fns';
 
 
 type AppJobPosting = {
@@ -37,19 +35,45 @@ type AppJobPosting = {
   jobPostingText: string;
   status: 'active' | 'inactive';
   expiresAt?: Date | null;
-  createdAt: Timestamp;
+  createdAt: Date;
 };
 
-type FirestoreJobPosting = {
-  id: string;
-  userProfileId: string;
-  jobTitle: string;
-  companyName: string;
-  jobPostingText: string;
-  createdAt: Timestamp;
-  status: 'active' | 'inactive';
-  expiresAt?: Timestamp;
-}
+const initialJobPostings: AppJobPosting[] = [
+    {
+        id: 'job-1',
+        userProfileId: 'anonymous-user',
+        jobTitle: 'Senior Frontend Developer',
+        companyName: 'Acme Inc.',
+        description: 'Build the future of web applications with our talented team.',
+        jobPostingText: 'Detailed job posting text for Senior Frontend Developer...',
+        status: 'active',
+        createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
+        expiresAt: new Date(Date.now() + 28 * 24 * 60 * 60 * 1000)
+    },
+    {
+        id: 'job-2',
+        userProfileId: 'anonymous-user',
+        jobTitle: 'UX Designer',
+        companyName: 'Starlight Solutions',
+        description: 'Create beautiful and intuitive user experiences.',
+        jobPostingText: 'Detailed job posting text for UX Designer...',
+        status: 'active',
+        createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // 5 days ago
+        expiresAt: null
+    },
+     {
+        id: 'job-3',
+        userProfileId: 'anonymous-user',
+        jobTitle: 'Data Scientist',
+        companyName: 'QuantumLeap AI',
+        description: 'Analyze data and build predictive models.',
+        jobPostingText: 'Detailed job posting text for Data Scientist...',
+        status: 'inactive',
+        createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000), // 10 days ago
+        expiresAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000)
+    }
+];
+
 
 function JobPostingGenerator({ onJobSaved }: { onJobSaved: (newPosting: AppJobPosting) => void }) {
   const [loading, setLoading] = useState(false);
@@ -122,7 +146,7 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (newPosting: AppJobPo
       description: generatedPosting.split('\n')[0],
       jobPostingText: generatedPosting,
       status: 'active',
-      createdAt: Timestamp.now(),
+      createdAt: new Date(),
       expiresAt: null,
     };
     
@@ -487,32 +511,7 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
   );
 }
 
-function PostingTimeDetails({ posting }: { posting: AppJobPosting }) {
-    const [createdAt, setCreatedAt] = useState('');
-    const [expiresAt, setExpiresAt] = useState('');
-    
-    useEffect(() => {
-        if(posting.createdAt) {
-            setCreatedAt(formatDistanceToNow(posting.createdAt.toDate(), { addSuffix: true }))
-        }
-        if(posting.expiresAt) {
-            setExpiresAt(` \u2022 Expires ${formatDistanceToNow(posting.expiresAt, { addSuffix: true })}`)
-        } else {
-            setExpiresAt('');
-        }
-    }, [posting.createdAt, posting.expiresAt]);
-    
-    if (!createdAt) return null;
-
-    return(
-        <p className="text-sm text-muted-foreground">
-            at {posting.companyName} &bull; {createdAt}
-            {expiresAt && <span>{expiresAt}</span>}
-        </p>
-    )
-}
-
-function PreviousPostings({ jobPostings, isLoading, onUpdate, onDelete }: { jobPostings: AppJobPosting[], isLoading: boolean, onUpdate: (id: string, updates: any) => void, onDelete: (id: string) => void }) {
+function PreviousPostings({ jobPostings, onDelete }: { jobPostings: AppJobPosting[], onDelete: (id: string) => void }) {
 
   return (
     <Card>
@@ -521,14 +520,13 @@ function PreviousPostings({ jobPostings, isLoading, onUpdate, onDelete }: { jobP
         <CardDescription>View and manage your previously generated job postings.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {isLoading && <Loader2 className="animate-spin" />}
-        {!isLoading && jobPostings.length === 0 && (
+        {jobPostings.length === 0 && (
           <div className="text-center text-muted-foreground py-12">
             <FileText className="mx-auto h-12 w-12" />
             <p className="mt-4">You haven't generated any job postings yet.</p>
           </div>
         )}
-        {!isLoading && jobPostings.length > 0 && (
+        {jobPostings.length > 0 && (
           <div className="space-y-4">
             {jobPostings.map((posting) => (
               <Card key={posting.id} className="p-4">
@@ -538,7 +536,9 @@ function PreviousPostings({ jobPostings, isLoading, onUpdate, onDelete }: { jobP
                        <h4 className="font-semibold text-lg">{posting.jobTitle}</h4>
                        <Badge variant={posting.status === 'active' ? 'default' : 'secondary'}>{posting.status}</Badge>
                     </div>
-                    <PostingTimeDetails posting={posting} />
+                     <p className="text-sm text-muted-foreground">
+                        at {posting.companyName} &bull; Created on {format(posting.createdAt, "PPP")}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                      <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(posting.jobPostingText)}>Copy Text</Button>
@@ -559,124 +559,24 @@ function PreviousPostings({ jobPostings, isLoading, onUpdate, onDelete }: { jobP
 
 export default function EmployerPage() {
   const [activeTab, setActiveTab] = useState("ranker");
-  const { firestore } = useFirebase();
-  const demoUserId = 'anonymous-user';
   const { toast } = useToast();
   
-  const [jobPostings, setJobPostings] = useState<AppJobPosting[]>([]);
+  const [jobPostings, setJobPostings] = useState<AppJobPosting[]>(initialJobPostings);
 
-  const jobPostingsQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return query(
-      collection(firestore, 'jobPostings'),
-      where('userProfileId', '==', demoUserId),
-      orderBy('createdAt', 'desc')
-    );
-  }, [firestore]);
-
-  const { data: firestorePostings, isLoading: isLoadingFirestore } = useCollection<FirestoreJobPosting>(jobPostingsQuery);
-  
-  useEffect(() => {
-    if (firestorePostings) {
-      const appPostings = firestorePostings.map(p => ({
-        id: p.id,
-        userProfileId: p.userProfileId,
-        jobTitle: p.jobTitle,
-        companyName: p.companyName,
-        description: p.jobPostingText.split('\n')[0],
-        jobPostingText: p.jobPostingText,
-        status: p.status,
-        expiresAt: p.expiresAt ? p.expiresAt.toDate() : null,
-        createdAt: p.createdAt,
-      }));
-      setJobPostings(appPostings);
-    }
-  }, [firestorePostings]);
-
-
-  const handleJobUpdate = async (jobId: string, updates: Partial<Pick<AppJobPosting, 'status' | 'expiresAt'>>) => {
-      const originalPostings = [...jobPostings];
+  const handleJobUpdate = (jobId: string, updates: Partial<Pick<AppJobPosting, 'status' | 'expiresAt'>>) => {
       setJobPostings(prev => prev.map(job => job.id === jobId ? { ...job, ...updates } : job));
-
-      if (!firestore || jobId.startsWith('new-')) {
-        toast({ title: "Demo Mode", description: "Status updated for this session only."});
-        return;
-      }
-      
-      try {
-        const docRef = doc(firestore, "jobPostings", jobId);
-        await updateDoc(docRef, updates);
-        toast({ title: "Job Updated", description: "The job posting status has been changed." });
-      } catch (error) {
-        console.error("Error updating job in Firestore:", error);
-        toast({ variant: 'destructive', title: "Update Failed", description: "Could not update the job posting." });
-        setJobPostings(originalPostings);
-      }
+      toast({ title: "Job Updated", description: "The job posting has been changed for this session." });
   }
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      let changed = false;
-      const now = new Date();
-      const updatedPostings = jobPostings.map(p => {
-        if (p.status === 'active' && p.expiresAt && now > p.expiresAt) {
-          changed = true;
-          handleJobUpdate(p.id, { status: 'inactive' });
-          return { ...p, status: 'inactive' as const };
-        }
-        return p;
-      });
-      if (changed) {
-        setJobPostings(updatedPostings);
-      }
-    }, 60000); 
-
-    return () => clearInterval(interval);
-  }, [jobPostings, handleJobUpdate]);
-
-
-  const handleJobSaved = async (newPosting: AppJobPosting) => {
+  const handleJobSaved = (newPosting: AppJobPosting) => {
     setActiveTab('ranker');
-
-    if (!firestore) {
-      setJobPostings(prev => [newPosting, ...prev].sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis()));
-      toast({ title: "Demo Mode", description: "Job posting saved in session. It won't persist."});
-      return;
-    }
-    
-    try {
-      const { id, ...postingData } = newPosting;
-      const jobPostingsCol = collection(firestore, 'jobPostings');
-      const docData = {
-        ...postingData,
-        createdAt: serverTimestamp(),
-      };
-      await addDoc(jobPostingsCol, docData);
-      toast({ title: "Job Saved", description: "The job has been saved to your account." });
-    } catch (error) {
-      console.error("Error saving job to Firestore:", error);
-      toast({ variant: 'destructive', title: "Save Failed", description: "Could not save the job posting." });
-    }
+    setJobPostings(prev => [newPosting, ...prev].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()));
+    toast({ title: "Job Saved", description: "Job posting saved for this session."});
   };
 
-  const handleJobDelete = async (jobId: string) => {
-    const originalPostings = [...jobPostings];
+  const handleJobDelete = (jobId: string) => {
     setJobPostings(prev => prev.filter(job => job.id !== jobId));
-    
-    if (!firestore || jobId.startsWith('new-')) {
-      toast({ title: "Job Removed", description: "The demo job posting has been removed from this session." });
-      return;
-    }
-    
-    try {
-      const docRef = doc(firestore, "jobPostings", jobId);
-      await deleteDoc(docRef);
-      toast({ title: "Job Deleted", description: "The job posting has been permanently removed." });
-    } catch (error) {
-      console.error("Error deleting job from Firestore:", error);
-      toast({ variant: 'destructive', title: "Delete Failed", description: "Could not delete the job posting." });
-      setJobPostings(originalPostings);
-    }
+    toast({ title: "Job Deleted", description: "The job posting has been removed for this session." });
   };
   
   return (
@@ -700,8 +600,6 @@ export default function EmployerPage() {
         <TabsContent value="previous" className="mt-4">
           <PreviousPostings 
             jobPostings={jobPostings}
-            isLoading={isLoadingFirestore}
-            onUpdate={handleJobUpdate}
             onDelete={handleJobDelete}
           />
         </TabsContent>
@@ -709,5 +607,3 @@ export default function EmployerPage() {
     </div>
   );
 }
-
-    
