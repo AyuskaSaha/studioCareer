@@ -1,0 +1,182 @@
+/**
+ * @fileoverview Firestore Security Rules for CareerAI application.
+ *
+ * Core Philosophy:
+ * This ruleset enforces a strict user-ownership model for user profiles, resumes, and job postings,
+ * ensuring that only the authenticated user who created the data can modify or delete it. Public
+ * read access is granted to resume templates, AI job suggestions, applications, and resume rankings.
+ *
+ * Data Structure:
+ * - /users/{userId}: Stores user profile information.  This is the root for user-owned data.
+ * - /users/{userId}/resumes/{resumeId}: Stores resumes created by users.
+ * - /users/{userId}/jobPostings/{jobPostingId}: Stores job postings created by employers.
+ * - /applications/{applicationId}: Stores job applications; publicly readable.
+ * - /resumeTemplates/{resumeTemplateId}: Stores resume templates; publicly readable.
+ * - /aiJobSuggestions/{aiJobSuggestionId}: Stores AI job suggestions; publicly readable.
+ * - /resumeRankings/{resumeRankingId}: Stores resume rankings; publicly readable.
+ *
+ * Key Security Decisions:
+ * - User listing is disallowed.
+ * - Path-based ownership is enforced for resumes and job postings, linking directly to the user's ID.
+ * - Public read access is granted for resume templates, AI job suggestions, applications, and resume rankings.
+ * - Data validation is limited to authorization-critical fields to allow for rapid prototyping.
+ *
+ * Denormalization for Authorization:
+ * - The `userProfileId` is used in the paths for resumes and job postings, enabling path-based ownership checks
+ *   without needing to read the document data.
+ *
+ * Structural Segregation:
+ * - Private user data (resumes, job postings) is stored in user subcollections, separate from public data
+ *   (resume templates, AI job suggestions), which allows for simpler and more performant list operations.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * @description Manages user profile data.
+     * @path /users/{userProfileId}
+     * @allow (create) Authenticated user can create their own profile if the ID matches their auth UID.
+     * @allow (get, update, delete) Authenticated user can access/modify/delete their own profile.
+     * @deny (create) if the user id does not match the authenticated user id.
+     * @deny (list) Listing users is not allowed.
+     * @deny (update,delete) if the user profile does not exist
+     * @principle Enforces user-ownership for profile data.
+     */
+    match /users/{userProfileId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isOwner(userId) {
+        return isSignedIn() && request.auth.uid == userId;
+      }
+
+      function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+      }
+
+      allow get: if isOwner(userProfileId);
+      allow list: if false;
+      allow create: if isOwner(userProfileId) && request.resource.data.id == userProfileId;
+      allow update: if isExistingOwner(userProfileId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userProfileId);
+    }
+
+    /**
+     * @description Manages resumes created by users.
+     * @path /users/{userProfileId}/resumes/{resumeId}
+     * @allow (create, get, list, update, delete) Only the owner of the user profile can create, access, modify, or delete resumes under their profile.
+     * @deny (create) if the userProfileId doesn't match the authenticated user's ID.
+     * @deny (update,delete) if the resume does not exist
+     * @principle Enforces path-based user-ownership for resumes.
+     */
+    match /users/{userProfileId}/resumes/{resumeId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isOwner(userId) {
+        return isSignedIn() && request.auth.uid == userId;
+      }
+
+      function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+      }
+
+      allow get: if isOwner(userProfileId);
+      allow list: if isOwner(userProfileId);
+      allow create: if isOwner(userProfileId) && request.resource.data.userProfileId == userProfileId;
+      allow update: if isExistingOwner(userProfileId) && request.resource.data.userProfileId == resource.data.userProfileId;
+      allow delete: if isExistingOwner(userProfileId);
+    }
+
+    /**
+     * @description Manages job postings created by employers.
+     * @path /users/{userProfileId}/jobPostings/{jobPostingId}
+     * @allow (create, get, list, update, delete) Only the owner of the user profile can create, access, modify, or delete job postings under their profile.
+     * @deny (create) if the userProfileId doesn't match the authenticated user's ID.
+     * @deny (update,delete) if the job posting does not exist
+     * @principle Enforces path-based user-ownership for job postings.
+     */
+    match /users/{userProfileId}/jobPostings/{jobPostingId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isOwner(userId) {
+        return isSignedIn() && request.auth.uid == userId;
+      }
+
+      function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+      }
+
+      allow get: if isOwner(userProfileId);
+      allow list: if isOwner(userProfileId);
+      allow create: if isOwner(userProfileId) && request.resource.data.userProfileId == userProfileId;
+      allow update: if isExistingOwner(userProfileId) && request.resource.data.userProfileId == resource.data.userProfileId;
+      allow delete: if isExistingOwner(userProfileId);
+    }
+
+    /**
+     * @description Manages job applications. Allows public read access.
+     * @path /applications/{applicationId}
+     * @allow (get, list) Public read access.
+     * @deny (create, update, delete) No write access granted in this prototype phase.
+     * @principle Allows public read access to applications.
+     */
+    match /applications/{applicationId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Manages resume templates. Allows public read access.
+     * @path /resumeTemplates/{resumeTemplateId}
+     * @allow (get, list) Public read access.
+     * @deny (create, update, delete) No write access granted in this prototype phase.
+     * @principle Allows public read access to resume templates.
+     */
+    match /resumeTemplates/{resumeTemplateId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Manages AI job suggestions. Allows public read access.
+     * @path /aiJobSuggestions/{aiJobSuggestionId}
+     * @allow (get, list) Public read access.
+     * @deny (create, update, delete) No write access granted in this prototype phase.
+     * @principle Allows public read access to AI job suggestions.
+     */
+    match /aiJobSuggestions/{aiJobSuggestionId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Manages resume rankings. Allows public read access.
+     * @path /resumeRankings/{resumeRankingId}
+     * @allow (get, list) Public read access.
+     * @deny (create, update, delete) No write access granted in this prototype phase.
+     * @principle Allows public read access to resume rankings.
+     */
+    match /resumeRankings/{resumeRankingId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}
