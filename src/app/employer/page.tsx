@@ -234,11 +234,6 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<AnalyzeResumeShortcomingsOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   const handleAnalyze = async () => {
     setLoading(true);
@@ -262,10 +257,6 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
       case 'low': return <Badge variant="secondary" className="bg-green-400 text-black hover:bg-green-400/80">Low</Badge>;
       default: return <Badge variant="outline">{severity}</Badge>;
     }
-  }
-  
-  if (!isClient) {
-    return null;
   }
 
   if (!analysis && !loading && !error) {
@@ -567,7 +558,6 @@ function PreviousPostings({ jobPostings, isLoading, onUpdate, onDelete }: { jobP
 
 
 export default function EmployerPage() {
-  const [isClient, setIsClient] = useState(false);
   const [activeTab, setActiveTab] = useState("ranker");
   const { firestore } = useFirebase();
   const demoUserId = 'anonymous-user';
@@ -586,10 +576,6 @@ export default function EmployerPage() {
 
   const { data: firestorePostings, isLoading: isLoadingFirestore } = useCollection<FirestoreJobPosting>(jobPostingsQuery);
   
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
   useEffect(() => {
     if (firestorePostings) {
       const appPostings = firestorePostings.map(p => ({
@@ -654,7 +640,6 @@ export default function EmployerPage() {
   };
 
   const handleJobDelete = async (jobId: string) => {
-    // Optimistic UI update
     const originalPostings = [...jobPostings];
     setJobPostings(prev => prev.filter(job => job.id !== jobId));
     
@@ -670,13 +655,11 @@ export default function EmployerPage() {
     } catch (error) {
       console.error("Error deleting job from Firestore:", error);
       toast({ variant: 'destructive', title: "Delete Failed", description: "Could not delete the job posting." });
-      // Revert optimistic update on failure
       setJobPostings(originalPostings);
     }
   };
   
   const handleJobUpdate = async (jobId: string, updates: Partial<Pick<AppJobPosting, 'status' | 'expiresAt'>>) => {
-      // Optimistic UI update
       const originalPostings = [...jobPostings];
       setJobPostings(prev => prev.map(job => job.id === jobId ? { ...job, ...updates } : job));
 
@@ -692,19 +675,10 @@ export default function EmployerPage() {
       } catch (error) {
         console.error("Error updating job in Firestore:", error);
         toast({ variant: 'destructive', title: "Update Failed", description: "Could not update the job posting." });
-        // Revert optimistic update on failure
         setJobPostings(originalPostings);
       }
   }
   
-  if (!isClient || isLoadingFirestore) {
-    return (
-      <div className="container mx-auto max-w-7xl py-8 px-4 flex justify-center items-center h-[calc(100vh-8rem)]">
-        <Loader2 className="h-16 w-16 animate-spin" />
-      </div>
-    );
-  }
-
   return (
     <div className="container mx-auto max-w-7xl py-8 px-4">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
