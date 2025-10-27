@@ -42,16 +42,108 @@ type AppJobPosting = {
 };
 
 
-const demoRankedResumes: RankResumesOutput = Array.from({ length: 10 }, (_, i) => ({
-    rank: i + 1,
+const demoRankedResumes: RankResumesOutput = [
+  {
+    rank: 1,
     resume: `
-Name: Candidate ${i + 1}
-Summary: A passionate developer with ${i + 2} years of experience in creating dynamic and responsive web applications.
-Experience: Worked on various projects, enhancing user engagement and system performance.
-Skills: JavaScript, React, Node.js, ${i % 2 === 0 ? 'TypeScript' : 'Python'}, SQL
+Name: Elena Rodriguez
+Summary: Senior Frontend Engineer with 8+ years of experience crafting beautiful, high-performance user interfaces for SaaS platforms. Expert in React, TypeScript, and Next.js. Passionate about design systems and component-driven development.
+Experience: Led the migration of a monolithic frontend to a micro-frontend architecture at ScaleUp Inc., improving deployment frequency by 300%.
+Skills: React, TypeScript, Next.js, GraphQL, Web Performance, Design Systems, CI/CD
 `,
-    reason: `Candidate ${i + 1} is ranked #${i + 1} due to their strong alignment with the key skills required, particularly their experience in React and Node.js. Their project history demonstrates capabilities relevant to the job description.`
-}));
+    reason: `Elena is ranked #1 due to her extensive experience with our core tech stack (React, Next.js, TypeScript) and proven leadership in a similar migration project, which aligns perfectly with the role's key responsibilities.`
+  },
+  {
+    rank: 2,
+    resume: `
+Name: Ben Carter
+Summary: A proactive Full-Stack Developer with a strong focus on backend systems using Node.js and GraphQL. Skilled in building scalable APIs and working in agile environments.
+Experience: Developed a real-time data processing pipeline at Innovate LLC, reducing latency by 40%.
+Skills: Node.js, GraphQL, TypeScript, PostgreSQL, Docker, AWS, Microservices
+`,
+    reason: `Ranked #2 for his deep backend expertise, especially with GraphQL and microservices. While his frontend skills are less pronounced than Elena's, his backend proficiency is a huge asset.`
+  },
+  {
+    rank: 3,
+    resume: `
+Name: Saniya Khan
+Summary: A detail-oriented Software Engineer with 5 years of experience, specializing in React and data visualization libraries like D3.js. Enjoys translating complex data into intuitive user interfaces.
+Experience: Created an interactive analytics dashboard for a major fintech client, which was praised for its usability and performance.
+Skills: JavaScript, React, D3.js, Redux, CSS-in-JS, SQL
+`,
+    reason: `Saniya's strong React skills and unique experience in data visualization make her a strong candidate. She is ranked #3 as her experience is slightly less senior than the top candidates.`
+  },
+  {
+    rank: 4,
+    resume: `
+Name: David Chen
+Summary: Recent computer science graduate with a passion for web development and cloud technologies. Completed internships focusing on React and Python (Django). Eager to learn and contribute to a fast-paced team.
+Experience: Intern at Connectly, assisted in building new UI features and writing unit tests.
+Skills: React, JavaScript, Python, Django, HTML/CSS, Git
+`,
+    reason: `David is a promising junior candidate with relevant internship experience in React. Ranked #4 due to his junior status, but shows great potential and eagerness to grow.`
+  },
+  {
+    rank: 5,
+    resume: `
+Name: Maria Garcia
+Summary: UX/UI Engineer who bridges the gap between design and development. Proficient in creating pixel-perfect interfaces from Figma mockups using React and styled-components.
+Experience: Worked closely with the design team at PixelPerfect Co. to build and maintain their component library.
+Skills: React, Storybook, Figma, styled-components, Accessibility (A11y)
+`,
+    reason: `Maria's unique blend of design and engineering skills is very valuable. She is ranked #5 because the role is more engineering-focused, but her expertise in component libraries is a significant plus.`
+  },
+  {
+    rank: 6,
+    resume: `
+Name: Kevin Lee
+Summary: Mobile Developer with experience in React Native, transitioning to web development. Strong understanding of the React ecosystem and state management.
+Experience: Built a cross-platform mobile app for a startup, reaching 50k downloads.
+Skills: React Native, React, Redux, JavaScript, Firebase
+`,
+    reason: `Kevin's strong React background is transferable, but his primary experience is in mobile. He's ranked #6 as he would have a learning curve transitioning to web-specific technologies like Next.js.`
+  },
+  {
+    rank: 7,
+    resume: `
+Name: Olivia Martinez
+Summary: Backend Engineer with expertise in Java and Spring Boot. Has some exposure to frontend development and is looking to transition into a full-stack role.
+Experience: Maintained and scaled critical backend services for a large enterprise application.
+Skills: Java, Spring Boot, SQL, REST APIs, Maven
+`,
+    reason: `Olivia has a very strong backend foundation but in a different tech stack (Java). Ranked #7 due to the significant ramp-up time required for our Node.js and React environment.`
+  },
+  {
+    rank: 8,
+    resume: `
+Name: James Wilson
+Summary: A Quality Assurance Engineer with a knack for automation using Cypress and Selenium. Has scripting experience with JavaScript and Python.
+Experience: Implemented an end-to-end automated testing suite, reducing manual testing time by 60%.
+Skills: Cypress, Selenium, JavaScript, Python, Jira, CI/CD
+`,
+    reason: `James has valuable automation skills and JavaScript knowledge, but lacks direct software development experience. Ranked #8 as this is a development role, not a QA role.`
+  },
+  {
+    rank: 9,
+    resume: `
+Name: Fatima Al-Jamil
+Summary: Project Manager with a technical background. Understands software development lifecycles and agile methodologies, but has not been hands-on coding for several years.
+Experience: Successfully managed the delivery of three major software projects, on time and under budget.
+Skills: Agile, Scrum, JIRA, Project Planning, Stakeholder Management
+`,
+    reason: `While Fatima has excellent project management skills, she does not meet the hands-on coding requirements for this role. She is ranked #9 for this reason.`
+  },
+  {
+    rank: 10,
+    resume: `
+Name: Tom Nguyen
+Summary: Wordpress Developer with extensive experience in PHP and customizing themes and plugins. Basic knowledge of JavaScript and jQuery.
+Experience: Built and maintained dozens of websites for small to medium-sized businesses.
+Skills: PHP, WordPress, MySQL, jQuery, HTML, CSS
+`,
+    reason: `Tom's experience is in a completely different technology stack (PHP/WordPress) from what is required for the role. He is ranked #10 as his skills are not a direct match.`
+  }
+];
 
 
 function JobPostingGenerator({ onJobSaved }: { onJobSaved: (newPosting: AppJobPosting) => void }) {
@@ -118,8 +210,6 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (newPosting: AppJobPo
     setSaving(true);
     const userId = 'anonymous-user';
 
-    // In a real app, we would save to Firestore here.
-    // For the demo, we'll just create the object and pass it up.
     try {
         const newPosting: AppJobPosting = {
             id: `job-${Date.now()}`, // Simple unique ID for demo
@@ -560,7 +650,6 @@ export default function EmployerPage() {
   const [jobPostings, setJobPostings] = useState<AppJobPosting[]>([]);
   const { toast } = useToast();
   
-  // Using a mock set of postings to avoid database errors for the demo.
   useEffect(() => {
     const mockPostings: AppJobPosting[] = [
         { 
@@ -569,7 +658,7 @@ export default function EmployerPage() {
             jobTitle: 'Senior Frontend Developer', 
             companyName: 'Acme Inc.', 
             description: 'Lead our frontend team.', 
-            jobPostingText: 'Full job text here...', 
+            jobPostingText: 'Full job text here for Senior Frontend Developer at Acme Inc. We are looking for an experienced developer to lead our frontend team. You will be responsible for building and maintaining our web applications, mentoring junior developers, and working with the design team to create beautiful user experiences.', 
             status: 'active', 
             createdAt: new Date(), 
             expiresAt: new Date(new Date().setDate(new Date().getDate() + 30)) 
@@ -580,7 +669,7 @@ export default function EmployerPage() {
             jobTitle: 'Backend Engineer', 
             companyName: 'Innovate LLC', 
             description: 'Work on our core API.', 
-            jobPostingText: 'Full job text here...', 
+            jobPostingText: 'Full job text here for Backend Engineer at Innovate LLC. We are looking for a skilled backend engineer to join our team. You will be responsible for designing, developing, and maintaining our core API. You should have experience with Node.js, Express, and databases like PostgreSQL or MongoDB.', 
             status: 'inactive', 
             createdAt: new Date(new Date().setDate(new Date().getDate() - 10)), 
             expiresAt: null 
@@ -633,5 +722,3 @@ export default function EmployerPage() {
     </div>
   );
 }
-
-    
