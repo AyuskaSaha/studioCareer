@@ -56,8 +56,6 @@ Also add the severity of the shortcoming as critical, high, moderate, or low.
 Ensure the output is structured according to the AnalyzeResumeShortcomingsOutputSchema, focusing on actionable insights for the employer.
 
 Avoid generic or obvious recommendations. Focus on providing insightful and practical advice tailored to the specific job description and candidate profile.
-
-Return the response as a JSON object that adheres to the output schema.
 `,
 });
 

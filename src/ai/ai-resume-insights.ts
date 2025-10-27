@@ -2,9 +2,9 @@
 'use server';
 
 /**
- * @fileOverview Provides AI-powered insights and suggestions for a resume based on a job description.
+ * @fileOverview Provides AI-powered insights and suggestions for a resume.
  *
- * - analyzeResume - Analyzes a resume and provides insights and suggestions.
+ * - analyzeResume - Analyzes a resume and provides insights and suggestions. Can optionally be provided a job description for more specific feedback.
  * - AnalyzeResumeInput - The input type for the analyzeResume function.
  * - AnalyzeResumeOutput - The return type for the analyzeResume function.
  */
@@ -14,7 +14,7 @@ import {z} from 'genkit';
 
 const AnalyzeResumeInputSchema = z.object({
   resumeText: z.string().describe('The text content of the resume.'),
-  jobDescription: z.string().describe('The job description for which the resume is being analyzed.'),
+  jobDescription: z.string().optional().describe('The job description for which the resume is being analyzed (optional).'),
   companyDetails: z.string().optional().describe('Details about the company (optional).'),
 });
 
@@ -37,19 +37,21 @@ const analyzeResumePrompt = ai.definePrompt({
   output: {schema: AnalyzeResumeOutputSchema},
   prompt: `You are a resume expert specializing in providing insights for job seekers.
 
-You will analyze the resume and provide actionable suggestions to improve its chances of getting past Applicant Tracking Systems (ATS) and impress recruiters, and determine an ATS score between 0 and 100.
+You will analyze the resume and provide actionable suggestions to improve its chances of getting past Applicant Tracking Systems (ATS) and impress recruiters. Determine an ATS score between 0 and 100.
+
+If a job description is provided, tailor your analysis to the specific requirements of that role. If not, provide general feedback on the resume's quality, clarity, and impact.
 
 Resume:
 {{resumeText}}
 
+{{#if jobDescription}}
 Job Description:
 {{jobDescription}}
+{{/if}}
 
-Company Details (Optional):
 {{#if companyDetails}}
+Company Details:
 {{companyDetails}}
-{{else}}
-Not provided.
 {{/if}}
 `,
 });

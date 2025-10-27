@@ -12,7 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 
-import { analyzeResumeShortcomings, type AnalyzeResumeShortcomingsOutput } from '@/ai/flows/resume-shortcoming-analysis';
+import { analyzeResume as analyzeResumeWithJD, type AnalyzeResumeOutput as AnalyzeResumeWithJDOutput } from '@/ai/ai-resume-insights';
 import { suggestJobs, type SuggestJobsOutput } from '@/ai/flows/ai-job-suggestion';
 import { rankResumes } from '@/ai/flows/top-resume-ranking';
 
@@ -126,11 +126,61 @@ function ResumePreview({ data }: { data: ResumeData }) {
   )
 }
 
+function ResumeAnalysisDisplay({ analysis }: { analysis: AnalyzeResumeWithJDOutput | null }) {
+  if (!analysis) return null;
+
+  return (
+    <div className="pt-4 space-y-4">
+      <Separator />
+      <h3 className="font-headline text-xl font-semibold">AI Resume Analysis</h3>
+      {analysis.atsScore !== null && (
+        <div className="space-y-2">
+          <Label className="font-semibold">ATS Score</Label>
+          <div className="flex items-center gap-4">
+            <Progress value={analysis.atsScore} className="w-full" />
+            <span className="font-bold text-lg text-primary">{analysis.atsScore}%</span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            This score estimates how well your resume might perform in an Applicant Tracking System.
+          </p>
+        </div>
+      )}
+      {analysis.insights && (
+        <div className="space-y-2">
+          <Label className="font-semibold">AI Insights & Suggestions</Label>
+          <div className="p-4 border rounded-md bg-muted/30 text-sm">
+            <p className="whitespace-pre-wrap">{analysis.insights}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function ResumeBuilder() {
   const [resumeData, setResumeData] = useState<ResumeData>(initialResumeData);
+  const [loading, setLoading] = useState(false);
+  const [analysis, setAnalysis] = useState<AnalyzeResumeWithJDOutput | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handlePersonalInfoChange = (field: keyof ResumeData['personalInfo'], value: string) => {
     setResumeData(prev => ({ ...prev, personalInfo: { ...prev.personalInfo, [field]: value }}));
+  };
+
+  const handleAnalyzeResume = async () => {
+    setLoading(true);
+    setError(null);
+    setAnalysis(null);
+    try {
+      const resumeText = resumeToText(resumeData);
+      const result = await analyzeResumeWithJD({ resumeText, jobDescription: '' });
+      setAnalysis(result);
+    } catch (e) {
+      console.error(e);
+      setError("Failed to analyze resume. Please try again.");
+    }
+    setLoading(false);
   };
   
   return (
@@ -138,7 +188,7 @@ function ResumeBuilder() {
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Resume Builder</CardTitle>
-          <CardDescription>Fill in your details to see a live preview of your resume.</CardDescription>
+          <CardDescription>Fill in your details to build your resume and get AI-powered feedback.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <h3 className="font-semibold text-lg flex items-center"><User className="mr-2 h-5 w-5"/> Personal Info</h3>
@@ -153,6 +203,19 @@ function ResumeBuilder() {
           <Textarea placeholder="Professional Summary" className="min-h-[100px]" value={resumeData.summary} onChange={e => setResumeData(prev => ({...prev, summary: e.target.value}))} />
           
           <p className="text-sm text-muted-foreground pt-4">For simplicity, experience, education, and skills are pre-filled. You can see the result in the preview.</p>
+          
+          <Separator />
+
+          <div className="pt-2">
+            <Button onClick={handleAnalyzeResume} disabled={loading}>
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              Analyze Resume with AI
+            </Button>
+            {loading && <p className="text-sm text-muted-foreground animate-pulse mt-2">AI is thinking...</p>}
+            {error && <p className="text-sm text-destructive mt-2">{error}</p>}
+            
+            <ResumeAnalysisDisplay analysis={analysis} />
+          </div>
 
         </CardContent>
       </Card>
@@ -166,26 +229,17 @@ function ResumeBuilder() {
 function ResumeInsights() {
   const [jobDescription, setJobDescription] = useState('');
   const [loading, setLoading] = useState(false);
-  const [atsScore, setAtsScore] = useState<number | null>(null);
-  const [analysis, setAnalysis] = useState<AnalyzeResumeShortcomingsOutput | null>(null);
+  const [analysis, setAnalysis] = useState<AnalyzeResumeWithJDOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
   const resumeText = resumeToText(initialResumeData);
   
   const handleAnalyze = async () => {
     setLoading(true);
     setError(null);
-    setAtsScore(null);
     setAnalysis(null);
     try {
-      const [rankResult, analysisResult] = await Promise.all([
-        rankResumes({ jobDescription, resumes: [resumeText] }),
-        analyzeResumeShortcomings({ resumeText, jobDescription })
-      ]);
-
-      if (rankResult && rankResult.length > 0) {
-        const score = Math.max(0, (11 - rankResult[0].rank) * 10);
-        setAtsScore(score);
-      }
+      // Re-using analyzeResume by providing an empty job description for general feedback
+      const analysisResult = await analyzeResumeWithJD({ resumeText, jobDescription });
       setAnalysis(analysisResult);
     } catch (e) {
       console.error(e);
@@ -207,41 +261,11 @@ function ResumeInsights() {
         </div>
         <Button onClick={handleAnalyze} disabled={loading || !jobDescription}>
           {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-          Analyze My Resume
+          Analyze Against Job Description
         </Button>
         {loading && <p className="text-sm text-muted-foreground animate-pulse">AI is analyzing...</p>}
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
-        {atsScore !== null && (
-          <div className="pt-4 space-y-2">
-            <h3 className="font-semibold text-lg">ATS Score</h3>
-            <div className="flex items-center gap-4">
-              <Progress value={atsScore} className="w-full"/>
-              <span className="font-bold text-lg text-primary">{atsScore}%</span>
-            </div>
-            <p className="text-sm text-muted-foreground">This score estimates how well your resume matches the job description for an Applicant Tracking System.</p>
-          </div>
-        )}
-        {analysis && (
-          <div className="pt-4 space-y-4">
-            <h3 className="font-semibold text-lg">AI Suggestions</h3>
-            <div className="p-4 border rounded-md bg-muted/30">
-              <h4 className="font-medium">Overall Assessment</h4>
-              <p className="text-sm text-muted-foreground">{analysis.overallAssessment}</p>
-            </div>
-            {analysis.shortcomings.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="font-medium mt-2">Areas for Improvement</h4>
-                {analysis.shortcomings.map((item, i) => (
-                  <div key={i} className="p-4 border rounded-md">
-                    <h4 className="font-semibold">{item.skill}</h4>
-                    <p className="text-sm"><strong className="text-muted-foreground">Impact:</strong> {item.impact}</p>
-                    <p className="text-sm"><strong className="text-muted-foreground">Suggestion:</strong> {item.mitigation}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        <ResumeAnalysisDisplay analysis={analysis} />
       </CardContent>
     </Card>
   )
