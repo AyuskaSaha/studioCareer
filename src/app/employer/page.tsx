@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, UserCheck, Search, FileText, Briefcase, Wand2, Save } from 'lucide-react';
+import { Loader2, Sparkles, UserCheck, Search, FileText, Briefcase, Wand2, Save, Users, Code } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { generateJobPosting, type JobPostingInput } from '@/ai/flows/ai-job-posting-generator';
@@ -23,7 +23,8 @@ import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
-import { addDocumentNonBlocking } from '@/firebase';
+import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+
 
 type JobPosting = {
   id: string;
@@ -94,28 +95,25 @@ function JobPostingGenerator() {
     }
     setSaving(true);
     setError(null);
-    try {
-      const jobPostingsCol = collection(firestore, 'jobPostings');
-      await addDoc(jobPostingsCol, {
-        userProfileId: user.uid,
-        jobTitle: formData.jobTitle,
-        companyName: formData.companyName,
-        location: formData.location,
-        salaryRange: formData.salaryRange,
-        jobType: formData.jobType,
-        jobPostingText: generatedPosting,
-        createdAt: serverTimestamp(),
-        status: 'active'
-      });
-      toast({
-        title: "Job Posting Saved!",
-        description: "Your new job posting has been saved to your 'Previous Postings'.",
-      });
-    } catch (e) {
-      console.error(e);
-      setError("Failed to save job posting.");
-      toast({ variant: 'destructive', title: 'Save Failed', description: 'Could not save the job posting. Please try again.' });
-    }
+    const jobPostingsCol = collection(firestore, 'jobPostings');
+    const docData = {
+      userProfileId: user.uid,
+      jobTitle: formData.jobTitle,
+      companyName: formData.companyName,
+      location: formData.location,
+      salaryRange: formData.salaryRange,
+      jobType: formData.jobType,
+      jobPostingText: generatedPosting,
+      createdAt: serverTimestamp(),
+      status: 'active'
+    };
+
+    addDocumentNonBlocking(jobPostingsCol, docData);
+
+    toast({
+      title: "Job Posting Saved!",
+      description: "Your new job posting has been saved to your 'Previous Postings'.",
+    });
     setSaving(false);
   }
   
@@ -137,7 +135,6 @@ function JobPostingGenerator() {
           </Alert>
         )}
 
-        {/* Form Section */}
         <div className="grid md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="jobTitle">Job Title</Label>
@@ -187,7 +184,6 @@ function JobPostingGenerator() {
           <Input id="niceToHaveSkills" placeholder="Comma-separated, e.g., GraphQL, Docker, AWS" value={formData.niceToHaveSkills || ''} onChange={handleInputChange} disabled={!user || loading}/>
         </div>
         
-        {/* Initial Generation Button */}
         {!generatedPosting && (
           <Button onClick={() => handleGenerate(false)} disabled={loading || !canGenerate()}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
@@ -197,7 +193,6 @@ function JobPostingGenerator() {
         
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
         
-        {/* Generated Content and Refinement Section */}
         {(generatedPosting || loading) && (
           <div className="space-y-4 pt-4 border-t mt-4">
              <div className="space-y-2">
@@ -313,27 +308,43 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
   )
 }
 
+const demoJobPostings = [
+  {
+    id: 'frontend-dev',
+    title: 'Senior Frontend Developer',
+    description: 'Seeking an experienced frontend developer to build modern, responsive web applications using React and Next.js. You will be responsible for leading frontend projects, mentoring junior developers, and collaborating with designers to create a seamless user experience.',
+    icon: <Code className="h-8 w-8" />,
+    jobDescription: 'Job Title: Senior Frontend Developer\nSkills: React, Next.js, TypeScript, Tailwind CSS, REST APIs\nExperience: 5+ years of professional frontend development experience, including leadership roles.'
+  },
+  {
+    id: 'pm',
+    title: 'Agile Project Manager',
+    description: 'We are looking for a certified Project Manager to lead our software development teams. You will be responsible for planning sprints, managing timelines, and ensuring project goals are met. Strong communication and leadership skills are a must.',
+    icon: <Users className="h-8 w-8" />,
+    jobDescription: 'Job Title: Agile Project Manager\nSkills: Agile, Scrum, JIRA, Confluence, Risk Management\nExperience: 3+ years in a project management role in a tech company. Scrum Master certification is a plus.'
+  }
+];
+
+
 function ResumeRanker() {
   const [loading, setLoading] = useState(false);
-  const [jobDescription, setJobDescription] = useState('');
+  const [selectedJob, setSelectedJob] = useState<{ id: string; title: string; jobDescription: string; } | null>(null);
   const [rankedResumes, setRankedResumes] = useState<RankResumesOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
   const rankingImage = PlaceHolderImages.find(img => img.id === 'resume-ranking');
 
-  const handleRank = async () => {
+  const handleRank = async (job: typeof demoJobPostings[0]) => {
+    setSelectedJob(job);
     setLoading(true);
     setError(null);
     setRankedResumes(null);
     try {
-      if (!jobDescription.trim()) {
-        throw new Error("Please provide a job description.");
-      }
-      const result = await rankResumes({ jobDescription });
+      const result = await rankResumes({ jobDescription: job.jobDescription });
       const sortedResumes = result.sort((a, b) => a.rank - b.rank);
       setRankedResumes(sortedResumes);
     } catch (e: any) {
       console.error(e);
-      setError(e.message || "Failed to rank resumes. Please check your inputs and try again.");
+      setError(e.message || "Failed to rank resumes. Please try again.");
     }
     setLoading(false);
   };
@@ -342,23 +353,43 @@ function ResumeRanker() {
     <Card>
       <CardHeader>
         <CardTitle className="font-headline">Top Resume Ranker</CardTitle>
-        <CardDescription>Paste a job description to automatically find and rank the top 10 candidates from our talent pool.</CardDescription>
+        <CardDescription>Select a demo job posting to automatically find and rank the top candidates from our talent pool.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="job-desc-ranker">Job Description</Label>
-          <Textarea id="job-desc-ranker" placeholder="Paste the full job description here to start the ranking process..." className="min-h-[200px]" value={jobDescription} onChange={e => setJobDescription(e.target.value)} />
-        </div>
+        
+        {!selectedJob ? (
+           <div className="grid md:grid-cols-2 gap-4">
+            {demoJobPostings.map(job => (
+              <Card 
+                key={job.id} 
+                className="cursor-pointer hover:shadow-md hover:border-primary transition-all"
+                onClick={() => handleRank(job)}
+              >
+                <CardHeader>
+                  <div className="flex items-start gap-4">
+                    <div className="p-3 bg-primary/10 rounded-full text-primary">
+                      {job.icon}
+                    </div>
+                    <div>
+                      <CardTitle className="text-xl">{job.title}</CardTitle>
+                      <CardDescription className="mt-1">{job.description}</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div>
+            <Button variant="outline" onClick={() => { setSelectedJob(null); setRankedResumes(null); }}>&larr; Back to Job Postings</Button>
+          </div>
+        )}
 
-        <Button onClick={handleRank} disabled={loading || !jobDescription}>
-          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
-          Find & Rank Top Candidates
-        </Button>
 
-        {loading && <p className="text-sm text-muted-foreground animate-pulse">Searching and ranking candidates, this may take a moment...</p>}
+        {loading && <div className="flex items-center gap-2 pt-4"><Loader2 className="h-5 w-5 animate-spin" /> <p className="text-sm text-muted-foreground animate-pulse">Searching and ranking candidates, this may take a moment...</p></div>}
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
         
-        {!rankedResumes && !loading && !error && rankingImage && (
+        {!rankedResumes && !loading && !error && !selectedJob && rankingImage && (
           <div className="pt-8 text-center">
              <div className="relative aspect-video max-w-lg mx-auto w-full overflow-hidden rounded-lg">
                 <Image src={rankingImage.imageUrl} alt={rankingImage.description} fill className="object-cover" data-ai-hint={rankingImage.imageHint}/>
@@ -367,9 +398,9 @@ function ResumeRanker() {
           </div>
         )}
 
-        {rankedResumes && (
+        {rankedResumes && selectedJob && (
           <div className="space-y-4 pt-4">
-            <h3 className="text-lg font-semibold font-headline">Top 10 Ranked Candidates</h3>
+            <h3 className="text-lg font-semibold font-headline">Top Ranked Candidates for: <span className="text-primary">{selectedJob.title}</span></h3>
             <div className="space-y-4">
               {rankedResumes.map(item => (
                 <Card key={item.rank} className="p-4">
@@ -384,7 +415,7 @@ function ResumeRanker() {
                         <p className="text-sm text-muted-foreground whitespace-pre-wrap font-sans line-clamp-4">{item.resume}</p>
                       </div>
 
-                      <ShortcomingAnalysis resume={item.resume} jobDescription={jobDescription} />
+                      <ShortcomingAnalysis resume={item.resume} jobDescription={selectedJob.jobDescription} />
                     </div>
                   </div>
                 </Card>
@@ -435,7 +466,6 @@ function PreviousPostings() {
   }, []);
 
   if (!isClient) {
-    // Render nothing on the server to avoid hydration mismatch with demo data
     return <Card><CardHeader><CardTitle className="font-headline">Previous Job Postings</CardTitle><CardDescription>View and manage your previously generated job postings.</CardDescription></CardHeader><CardContent><Loader2 className="animate-spin" /></CardContent></Card>;
   }
 

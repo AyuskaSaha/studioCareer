@@ -10,6 +10,7 @@ import { collection, getDocs } from 'firebase/firestore';
 
 const GetAllResumesOutputSchema = z.array(z.string().describe("The text content of a single resume."));
 
+// NOTE: This tool is currently not used in the demo version of the resume ranker.
 export const getAllResumesTool = ai.defineTool(
   {
     name: 'getAllResumes',
@@ -19,11 +20,18 @@ export const getAllResumesTool = ai.defineTool(
   },
   async () => {
     console.log('Fetching all resumes from Firestore...');
-    const { firestore } = initializeServerFirebase();
-    const resumesCol = collection(firestore, 'resumes');
-    const resumeSnapshot = await getDocs(resumesCol);
-    const resumeList = resumeSnapshot.docs.map(doc => doc.data().resumeText as string);
-    console.log(`Found ${resumeList.length} resumes.`);
-    return resumeList;
+    try {
+      const { firestore } = initializeServerFirebase();
+      const resumesCol = collection(firestore, 'resumes');
+      const resumeSnapshot = await getDocs(resumesCol);
+      const resumeList = resumeSnapshot.docs.map(doc => doc.data().resumeText as string);
+      console.log(`Found ${resumeList.length} resumes.`);
+      return resumeList;
+    } catch (e) {
+      console.error("Error fetching resumes from Firestore:", e);
+      // In a real-world scenario, you might want to handle this more gracefully.
+      // For the demo, we can return an empty array or throw the error.
+      return [];
+    }
   }
 );
