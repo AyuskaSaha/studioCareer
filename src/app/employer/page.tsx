@@ -431,8 +431,6 @@ function ResumeRanker({ jobPostings, onJobDelete, onJobUpdate }: { jobPostings: 
     setRankedResumes(null);
     setDecisions({});
     try {
-      // For the demo, we use pre-canned results.
-      // In a real app, you would make the API call here:
       const result = await rankResumes({ jobDescription: job.jobPostingText });
       setRankedResumes(result.length > 0 ? result : demoRankedResumes); // Fallback to demo data
     } catch (e: any) {
