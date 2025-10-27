@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -12,9 +13,9 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 
-import { analyzeResume as analyzeResumeWithJD, type AnalyzeResumeOutput as AnalyzeResumeWithJDOutput } from '@/ai/ai-resume-insights';
+import { analyzeResume, type AnalyzeResumeOutput } from '@/ai/ai-resume-insights';
 import { suggestJobs, type SuggestJobsOutput } from '@/ai/flows/ai-job-suggestion';
-import { rankResumes } from '@/ai/flows/top-resume-ranking';
+import { searchJobs, type SearchJobsOutput } from '@/ai/flows/ai-job-search';
 
 type ResumeData = {
   personalInfo: {
@@ -126,7 +127,7 @@ function ResumePreview({ data }: { data: ResumeData }) {
   )
 }
 
-function ResumeAnalysisDisplay({ analysis }: { analysis: AnalyzeResumeWithJDOutput | null }) {
+function ResumeAnalysisDisplay({ analysis }: { analysis: AnalyzeResumeOutput | null }) {
   if (!analysis) return null;
 
   return (
@@ -161,7 +162,7 @@ function ResumeAnalysisDisplay({ analysis }: { analysis: AnalyzeResumeWithJDOutp
 function ResumeBuilder() {
   const [resumeData, setResumeData] = useState<ResumeData>(initialResumeData);
   const [loading, setLoading] = useState(false);
-  const [analysis, setAnalysis] = useState<AnalyzeResumeWithJDOutput | null>(null);
+  const [analysis, setAnalysis] = useState<AnalyzeResumeOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handlePersonalInfoChange = (field: keyof ResumeData['personalInfo'], value: string) => {
@@ -174,7 +175,7 @@ function ResumeBuilder() {
     setAnalysis(null);
     try {
       const resumeText = resumeToText(resumeData);
-      const result = await analyzeResumeWithJD({ resumeText, jobDescription: '' });
+      const result = await analyzeResume({ resumeText });
       setAnalysis(result);
     } catch (e) {
       console.error(e);
@@ -229,7 +230,7 @@ function ResumeBuilder() {
 function ResumeInsights() {
   const [jobDescription, setJobDescription] = useState('');
   const [loading, setLoading] = useState(false);
-  const [analysis, setAnalysis] = useState<AnalyzeResumeWithJDOutput | null>(null);
+  const [analysis, setAnalysis] = useState<AnalyzeResumeOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
   const resumeText = resumeToText(initialResumeData);
   
@@ -238,8 +239,7 @@ function ResumeInsights() {
     setError(null);
     setAnalysis(null);
     try {
-      // Re-using analyzeResume by providing an empty job description for general feedback
-      const analysisResult = await analyzeResumeWithJD({ resumeText, jobDescription });
+      const analysisResult = await analyzeResume({ resumeText, jobDescription });
       setAnalysis(analysisResult);
     } catch (e) {
       console.error(e);
@@ -327,35 +327,67 @@ function JobSuggestions() {
   )
 }
 
-const mockJobs = [
-  { title: "Frontend Developer", company: "Web Solutions", location: "Remote" },
-  { title: "Backend Engineer", company: "Data Systems", location: "San Francisco, CA" },
-  { title: "Full Stack Developer", company: "Creative Apps", location: "New York, NY" },
-];
-
 function JobSearch() {
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<SearchJobsOutput | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSearch = async () => {
+    setLoading(true);
+    setError(null);
+    setResults(null);
+    try {
+      const searchResult = await searchJobs({ query });
+      setResults(searchResult);
+    } catch (e) {
+      console.error(e);
+      setError("Search failed. Please try again.");
+    }
+    setLoading(false);
+  };
+
   return (
      <Card className="max-w-4xl mx-auto">
       <CardHeader>
-        <CardTitle className="font-headline">Job Search</CardTitle>
-        <CardDescription>Search for job openings. (This is a simplified mock-up).</CardDescription>
+        <CardTitle className="font-headline">AI Job Search</CardTitle>
+        <CardDescription>Search for job openings using AI.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex gap-2">
-          <Input placeholder="Search by keywords..."/>
-          <Button><Search className="mr-2 h-4 w-4"/> Search</Button>
+          <Input 
+            placeholder="Search by keywords, e.g., 'frontend developer remote'"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+          />
+          <Button onClick={handleSearch} disabled={loading || !query}>
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+            Search
+          </Button>
         </div>
-        <div className="pt-4 space-y-4">
-          {mockJobs.map((job, i) => (
-            <Card key={i} className="flex justify-between items-center p-4">
-              <div>
-                <h4 className="font-semibold">{job.title}</h4>
-                <p className="text-sm text-muted-foreground">{job.company} - {job.location}</p>
-              </div>
-              <Button>Apply</Button>
-            </Card>
-          ))}
-        </div>
+        {loading && <p className="text-sm text-muted-foreground animate-pulse">AI is searching for jobs...</p>}
+        {error && <p className="text-sm text-destructive mt-2">{error}</p>}
+        {results && (
+          <div className="pt-4 space-y-4">
+            {results.length === 0 ? (
+              <p>No jobs found for your query.</p>
+            ) : (
+              results.map((job, i) => (
+                <Card key={i} className="flex flex-col sm:flex-row justify-between sm:items-center p-4 gap-4">
+                  <div className="flex-1">
+                    <h4 className="font-semibold">{job.title}</h4>
+                    <p className="text-sm text-muted-foreground">{job.company} - {job.location}</p>
+                    <p className="text-sm mt-2">{job.description}</p>
+                  </div>
+                  <Button asChild>
+                    <Link href={job.applyUrl} target="_blank" rel="noopener noreferrer">Apply</Link>
+                  </Button>
+                </Card>
+              ))
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   )

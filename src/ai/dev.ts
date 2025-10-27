@@ -6,3 +6,4 @@ import '@/ai/flows/top-resume-ranking.ts';
 import '@/ai/flows/resume-shortcoming-analysis.ts';
 import '@/ai/flows/ai-job-posting-generator.ts';
 import '@/ai/flows/ai-job-suggestion.ts';
+import '@/ai/flows/ai-job-search.ts';
