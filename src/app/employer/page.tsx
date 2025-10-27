@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, UserCheck, Search, FileText, Briefcase, Wand2, Save, Users, Code, Trash2 } from 'lucide-react';
+import { Loader2, Sparkles, UserCheck, Search, FileText, Briefcase, Wand2, Save, Users, Code, Trash2, CalendarIcon } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { generateJobPosting, type JobPostingInput } from '@/ai/flows/ai-job-posting-generator';
@@ -18,11 +18,16 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Badge } from '@/components/ui/badge';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, orderBy, where, Timestamp, addDoc, serverTimestamp } from 'firebase/firestore';
-import { formatDistanceToNow } from 'date-fns';
+import { collection, query, orderBy, where, Timestamp, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+import { format, formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
+
 
 type AppJobPosting = {
   id: string;
@@ -30,6 +35,8 @@ type AppJobPosting = {
   description: string;
   icon: JSX.Element;
   jobDescription: string;
+  status: 'active' | 'inactive';
+  expiresAt?: Date | null;
 };
 
 type FirestoreJobPosting = {
@@ -39,6 +46,7 @@ type FirestoreJobPosting = {
   jobPostingText: string;
   createdAt: Timestamp;
   status: 'active' | 'inactive';
+  expiresAt?: Timestamp;
 }
 
 function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) => void }) {
@@ -50,7 +58,6 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) 
   const [error, setError] = useState<string | null>(null);
   const { user, firestore } = useFirebase();
   const { toast } = useToast();
-  const [streamedContent, setStreamedContent] = useState('');
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { id, value } = e.target;
@@ -73,7 +80,6 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) 
     }
     setLoading(true);
     setError(null);
-    setStreamedContent('');
     setGeneratedPosting('');
 
     try {
@@ -108,6 +114,7 @@ function JobPostingGenerator({ onJobSaved }: { onJobSaved: (job: AppJobPosting) 
       description: formData.description || 'No description provided.',
       icon: <Briefcase className="h-8 w-8" />,
       jobDescription: generatedPosting,
+      status: 'active',
     };
     onJobSaved(newJob);
 
@@ -320,7 +327,7 @@ function ShortcomingAnalysis({ resume, jobDescription }: { resume: string; jobDe
   )
 }
 
-function ResumeRanker({ jobPostings, onSelectJob, onJobDelete }: { jobPostings: AppJobPosting[]; onSelectJob: (job: AppJobPosting) => void; onJobDelete: (jobId: string) => void; }) {
+function ResumeRanker({ jobPostings, onSelectJob, onJobDelete, onJobUpdate }: { jobPostings: AppJobPosting[]; onSelectJob: (job: AppJobPosting) => void; onJobDelete: (jobId: string) => void; onJobUpdate: (jobId: string, updates: Partial<AppJobPosting>) => void; }) {
   const [loading, setLoading] = useState(false);
   const [selectedJob, setSelectedJob] = useState<AppJobPosting | null>(null);
   const [rankedResumes, setRankedResumes] = useState<RankResumesOutput | null>(null);
@@ -328,6 +335,7 @@ function ResumeRanker({ jobPostings, onSelectJob, onJobDelete }: { jobPostings: 
   const rankingImage = PlaceHolderImages.find(img => img.id === 'resume-ranking');
 
   const handleRank = async (job: AppJobPosting) => {
+    if (job.status === 'inactive') return;
     setSelectedJob(job);
     onSelectJob(job);
     setLoading(true);
@@ -349,6 +357,14 @@ function ResumeRanker({ jobPostings, onSelectJob, onJobDelete }: { jobPostings: 
     onJobDelete(jobId);
   }
 
+  const handleStatusChange = (jobId: string, newStatus: boolean) => {
+    onJobUpdate(jobId, { status: newStatus ? 'active' : 'inactive' });
+  };
+  
+  const handleDateChange = (jobId: string, date: Date | undefined) => {
+      onJobUpdate(jobId, { expiresAt: date });
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -362,12 +378,15 @@ function ResumeRanker({ jobPostings, onSelectJob, onJobDelete }: { jobPostings: 
             {jobPostings.map(job => (
               <Card 
                 key={job.id} 
-                className="cursor-pointer hover:shadow-md hover:border-primary transition-all group relative"
+                className={cn(
+                  "cursor-pointer hover:shadow-md transition-all group relative",
+                  job.status === 'active' ? 'hover:border-primary' : 'bg-muted/50 cursor-not-allowed'
+                )}
                 onClick={() => handleRank(job)}
               >
                 <CardHeader>
                   <div className="flex items-start gap-4">
-                    <div className="p-3 bg-primary/10 rounded-full text-primary">
+                    <div className={cn("p-3 rounded-full", job.status === 'active' ? 'bg-primary/10 text-primary' : 'bg-muted-foreground/10 text-muted-foreground')}>
                       {job.icon}
                     </div>
                     <div>
@@ -376,6 +395,55 @@ function ResumeRanker({ jobPostings, onSelectJob, onJobDelete }: { jobPostings: 
                     </div>
                   </div>
                 </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className='flex items-center space-x-2'>
+                        <Switch
+                          id={`status-${job.id}`}
+                          checked={job.status === 'active'}
+                          onCheckedChange={(checked) => handleStatusChange(job.id, checked)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <Label htmlFor={`status-${job.id}`} onClick={(e) => e.stopPropagation()}>
+                          <Badge variant={job.status === 'active' ? 'default' : 'secondary'}>
+                            {job.status === 'active' ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </Label>
+                      </div>
+                       {job.status === 'active' && (
+                        <Button variant="destructive" size="sm" onClick={(e) => { e.stopPropagation(); handleStatusChange(job.id, false); }}>
+                          Stop Accepting
+                        </Button>
+                      )}
+                    </div>
+                     <div className="flex items-center space-x-2">
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "w-[240px] justify-start text-left font-normal",
+                                !job.expiresAt && "text-muted-foreground"
+                              )}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {job.expiresAt ? format(job.expiresAt, "PPP") : <span>Set expiration date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start" onClick={(e) => e.stopPropagation()}>
+                            <Calendar
+                              mode="single"
+                              selected={job.expiresAt || undefined}
+                              onSelect={(date) => handleDateChange(job.id, date)}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                  </div>
+                </CardContent>
                 <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => handleDelete(e, job.id)}>
                   <Trash2 className="h-4 w-4"/>
                 </Button>
@@ -476,6 +544,19 @@ function PreviousPostings() {
     ? demoFirestorePostings
     : (jobPostings || []);
 
+  const handleStatusUpdate = async (postingId: string, newStatus: 'active' | 'inactive') => {
+    if (!firestore || !user) return;
+    const docRef = doc(firestore, 'jobPostings', postingId);
+    await updateDoc(docRef, { status: newStatus });
+  }
+
+  const handleExpiresAtUpdate = async (postingId: string, newDate: Date | null) => {
+    if (!firestore || !user) return;
+    const docRef = doc(firestore, 'jobPostings', postingId);
+    await updateDoc(docRef, { expiresAt: newDate ? Timestamp.fromDate(newDate) : null });
+  }
+
+
   return (
     <Card>
       <CardHeader>
@@ -502,6 +583,7 @@ function PreviousPostings() {
                     </div>
                     <p className="text-sm text-muted-foreground">
                       at {posting.companyName} &bull; {formatDistanceToNow(posting.createdAt.toDate(), { addSuffix: true })}
+                      {posting.expiresAt && <span> &bull; Expires {formatDistanceToNow(posting.expiresAt.toDate(), { addSuffix: true })}</span>}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -526,16 +608,37 @@ export default function EmployerPage() {
       title: 'Senior Frontend Developer',
       description: 'Seeking an experienced frontend developer to build modern, responsive web applications using React and Next.js. You will be responsible for leading frontend projects, mentoring junior developers, and collaborating with designers to create a seamless user experience.',
       icon: <Code className="h-8 w-8" />,
-      jobDescription: 'Job Title: Senior Frontend Developer\nSkills: React, Next.js, TypeScript, Tailwind CSS, REST APIs\nExperience: 5+ years of professional frontend development experience, including leadership roles.'
+      jobDescription: 'Job Title: Senior Frontend Developer\nSkills: React, Next.js, TypeScript, Tailwind CSS, REST APIs\nExperience: 5+ years of professional frontend development experience, including leadership roles.',
+      status: 'active',
+      expiresAt: null
     },
     {
       id: 'pm',
       title: 'Agile Project Manager',
       description: 'We are looking for a certified Project Manager to lead our software development teams. You will be responsible for planning sprints, managing timelines, and ensuring project goals are met. Strong communication and leadership skills are a must.',
       icon: <Users className="h-8 w-8" />,
-      jobDescription: 'Job Title: Agile Project Manager\nSkills: Agile, Scrum, JIRA, Confluence, Risk Management\nExperience: 3+ years in a project management role in a tech company. Scrum Master certification is a plus.'
+      jobDescription: 'Job Title: Agile Project Manager\nSkills: Agile, Scrum, JIRA, Confluence, Risk Management\nExperience: 3+ years in a project management role in a tech company. Scrum Master certification is a plus.',
+      status: 'active',
+      expiresAt: null
     }
   ]);
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+    const interval = setInterval(() => {
+      setJobPostings(prevPostings =>
+        prevPostings.map(p => {
+          if (p.status === 'active' && p.expiresAt && new Date() > p.expiresAt) {
+            return { ...p, status: 'inactive' };
+          }
+          return p;
+        })
+      );
+    }, 60000); // Check every minute
+
+    return () => clearInterval(interval);
+  }, []);
 
   const handleJobSaved = (newJob: AppJobPosting) => {
     setJobPostings(prev => [newJob, ...prev]);
@@ -551,6 +654,14 @@ export default function EmployerPage() {
   const handleJobDelete = (jobId: string) => {
     setJobPostings(prev => prev.filter(job => job.id !== jobId));
   };
+  
+  const handleJobUpdate = (jobId: string, updates: Partial<AppJobPosting>) => {
+    setJobPostings(prev => prev.map(job => job.id === jobId ? {...job, ...updates} : job));
+  };
+
+  if (!isClient) {
+    return null; // or a loading skeleton
+  }
 
   return (
     <div className="container mx-auto max-w-5xl py-8 px-4">
@@ -561,7 +672,7 @@ export default function EmployerPage() {
           <TabsTrigger value="previous">Previous Postings</TabsTrigger>
         </TabsList>
         <TabsContent value="ranker" className="mt-4">
-          <ResumeRanker jobPostings={jobPostings} onSelectJob={handleSelectJobInRanker} onJobDelete={handleJobDelete} />
+          <ResumeRanker jobPostings={jobPostings} onSelectJob={handleSelectJobInRanker} onJobDelete={handleJobDelete} onJobUpdate={handleJobUpdate}/>
         </TabsContent>
         <TabsContent value="generator" className="mt-4">
           <JobPostingGenerator onJobSaved={handleJobSaved} />

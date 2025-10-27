@@ -1,0 +1,233 @@
+{
+  "entities": {
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserProfile",
+      "type": "object",
+      "description": "Represents a user profile in the CareerAI application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the UserProfile entity."
+        },
+        "firstName": {
+          "type": "string",
+          "description": "The user's first name."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The user's last name."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address.",
+          "format": "email"
+        },
+        "userType": {
+          "type": "string",
+          "description": "The type of user: 'jobSeeker' or 'employer'."
+        }
+      },
+      "required": [
+        "id",
+        "firstName",
+        "lastName",
+        "email",
+        "userType"
+      ]
+    },
+    "Resume": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Resume",
+      "type": "object",
+      "description": "Represents a resume created by a job seeker.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Resume entity."
+        },
+        "userProfileId": {
+          "type": "string",
+          "description": "Reference to UserProfile. (Relationship: UserProfile 1:N Resume)"
+        },
+        "resumeText": {
+          "type": "string",
+          "description": "The full text content of the resume."
+        },
+        "title": {
+          "type": "string",
+          "description": "The title or name of the resume."
+        },
+        "content": {
+          "type": "string",
+          "description": "The JSON content of the resume."
+        }
+      },
+      "required": [
+        "id",
+        "userProfileId",
+        "title",
+        "content",
+        "resumeText"
+      ]
+    },
+    "JobPosting": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "JobPosting",
+      "type": "object",
+      "description": "Represents a job posting created by an employer.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the JobPosting entity."
+        },
+        "userProfileId": {
+          "type": "string",
+          "description": "Reference to UserProfile. Represents the employer who created the job posting."
+        },
+        "jobTitle": {
+          "type": "string",
+          "description": "The title of the job posting."
+        },
+        "companyName": {
+          "type": "string",
+          "description": "The name of the company offering the job."
+        },
+        "location": {
+          "type": "string",
+          "description": "The location of the job."
+        },
+        "salaryRange": {
+          "type": "string",
+          "description": "The salary range for the position."
+        },
+        "jobType": {
+          "type": "string",
+          "description": "The type of employment (e.g., Full-time, Part-time)."
+        },
+        "jobPostingText": {
+          "type": "string",
+          "description": "The full, generated text of the job posting."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when the job posting was created."
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when the job posting will automatically become inactive."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "inactive"
+          ],
+          "description": "The current status of the job posting."
+        }
+      },
+      "required": [
+        "id",
+        "userProfileId",
+        "jobTitle",
+        "companyName",
+        "jobPostingText",
+        "createdAt",
+        "status"
+      ]
+    },
+    "Application": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Application",
+      "type": "object",
+      "description": "Represents a job application submitted by a job seeker.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Application entity."
+        },
+        "userProfileId": {
+          "type": "string",
+          "description": "Reference to UserProfile. (Relationship: UserProfile 1:N Application). Represents the job seeker who submitted the application."
+        },
+        "jobPostingId": {
+          "type": "string",
+          "description": "Reference to JobPosting. (Relationship: JobPosting 1:N Application)"
+        },
+        "resumeId": {
+          "type": "string",
+          "description": "Reference to Resume. (Relationship: Resume 1:N Application)"
+        },
+        "applicationDate": {
+          "type": "string",
+          "description": "The date when the application was submitted.",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the application (e.g., 'submitted', 'reviewed', 'interviewing', 'rejected', 'hired')."
+        }
+      },
+      "required": [
+        "id",
+        "userProfileId",
+        "jobPostingId",
+        "resumeId",
+        "applicationDate",
+        "status"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/entities/UserProfile"
+          },
+          "description": "Stores user profile information."
+        }
+      },
+      {
+        "path": "/resumes/{resumeId}",
+        "definition": {
+          "entityName": "Resume",
+          "schema": {
+            "$ref": "#/entities/Resume"
+          },
+          "description": "Stores all resumes created by job seekers. Publicly readable for ranking, but only writable by the owner."
+        }
+      },
+      {
+        "path": "/jobPostings/{jobPostingId}",
+        "definition": {
+          "entityName": "JobPosting",
+          "schema": {
+            "$ref": "#/entities/JobPosting"
+          },
+          "description": "Stores all job postings created by employers."
+        }
+      },
+      {
+        "path": "/applications/{applicationId}",
+        "definition": {
+          "entityName": "Application",
+          "schema": {
+            "$ref": "#/entities/Application"
+          },
+          "description": "Stores job applications."
+        }
+      }
+    ]
+  }
+}
